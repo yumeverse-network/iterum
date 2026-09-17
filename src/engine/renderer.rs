@@ -288,9 +288,6 @@ impl Renderer {
             ),
         );
 
-        // Allocate the vertex buffer ONCE at a fixed capacity.
-        // Contents are rewritten every frame inside `render()`.
-        // Do NOT call `Buffer::from_iter` per frame — that reallocates GPU memory.
         let vertex_buffer = Buffer::new_slice::<MyVertex>(
             memory_allocator.clone(),
             BufferCreateInfo {
@@ -321,12 +318,6 @@ impl Renderer {
             .unwrap();
 
         let command_buffer = builder.build().unwrap();
-
-        /*sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
-        .unwrap()
-        .flush()
-        .unwrap();*/
 
         let future = sync::now(device.clone())
             .then_execute(queue.clone(), command_buffer)
@@ -361,22 +352,6 @@ impl Renderer {
             .next()
             .expect("surface has no supported formats")
             .0;
-
-        /*let render_pass = vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                color: {
-                    format: image_format,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {},
-            },
-        ).unwrap();*/
 
         let render_pass = vulkano::single_pass_renderpass!(
             device.clone(),
@@ -468,25 +443,6 @@ impl Renderer {
             },
         )
         .expect("failed to create swapchain");
-
-        /*let image_views = images
-            .iter()
-            .map(|image| ImageView::new_default(image.clone()).unwrap())
-            .collect::<Vec<_>>();
-
-        let framebuffers = image_views
-            .iter()
-            .map(|view| {
-                Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![view.clone()],
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();*/
 
         let image_views = images
             .iter()
@@ -689,7 +645,7 @@ impl Renderer {
         )
         .unwrap();
 
-        // Clone the Subbuffer — cheap, just bumps an Arc refcount.
+        // Clone the Subbuffer
         let vertex_buffer = self.vertex_buffer.as_ref().unwrap().clone();
 
         // Update delta time
@@ -720,15 +676,12 @@ impl Renderer {
         let vertex_count = vertices.len() as u32;
 
         // Write the new vertices into the pre-allocated buffer.
-        // Guard is scoped so it drops before we submit any GPU work on this buffer.
         {
             let mut writer = vertex_buffer.write().unwrap();
             let dst = &mut writer[..vertices.len()];
             dst.copy_from_slice(&vertices);
         }
 
-        // Slice the buffer down to the number of vertices we actually want to draw.
-        // NOTE: `slice` consumes `vertex_buffer`, so nothing may borrow it after this line.
         let draw_buffer = vertex_buffer.slice(0..vertices.len() as u64);
 
         // Get the next swapchain image.
@@ -748,7 +701,6 @@ impl Renderer {
 
         let framebuffer = self.framebuffers[image_index as usize].clone();
 
-        // Match the viewport to the actual swapchain image.
         let dimensions = swapchain.image_extent();
 
         let viewport = Viewport {
@@ -760,7 +712,6 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
-        // Begin recording commands.
         let mut builder = AutoCommandBufferBuilder::primary(
             command_buffer_allocator.clone(),
             queue.queue_family_index(),
