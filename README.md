@@ -104,6 +104,7 @@ Please see `LICENSE` for more detail.
 - [ ] Automatic Asset Import
 - [ ] Automatic Texture Compression (ASTC, BC7, etc.)
 - [ ] Input API
+- [ ] Custom Asset Pack Format
 
 ### Scripting
 
