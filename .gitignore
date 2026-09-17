@@ -1,0 +1,6 @@
+/target
+/.stfolder
+/.cargo
+.stignore
+Cargo.lock
+.DS_STORE

@@ -1,0 +1,200 @@
+use glam::DVec3;
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+use engine::Engine;
+use sdl3::event::Event;
+use crate::engine::input::{
+    Action, Binding, InputEvent, InputManager, Key, MouseButton,
+};
+mod engine;
+
+use std::time::Instant;
+
+fn main() {
+    let mut engine = Engine::new();
+    let mut assets = engine::asset_manager::AssetManager::new();
+    let logger = engine::console::Console::new();
+    let math = engine::emath::EMath::new();
+    let mut fps = engine::fps::FpsCounter::new();
+    let mut winman = engine::window::Window::new();
+    let mut renderer = engine::renderer::Renderer::new();
+    let mut input = InputManager::new();
+    let mut player = engine::player::Player::new();
+
+    let mut last_pos = DVec3::ZERO;
+
+    engine.init();
+
+    logger.log("Helloooo");
+
+    logger.break_line();
+
+    logger.log_error("Boop");
+    logger.log_system("Bap");
+    logger.log_warning("Boom");
+
+    logger.break_line();
+
+    logger.log(math.normalize(43.21, 0));
+    logger.log(math.to_str(21));
+
+    logger.break_line();
+
+    assets.mount_iia("hi.iia");
+
+    logger.break_line();
+
+    winman.init_window();
+
+    renderer.init(winman.window.as_ref().unwrap());
+
+    // INPUT ACTIONS
+    input.actions.bind(
+        "mv_forward",
+        Action::new(vec![
+            Binding::Key(Key::W),
+        ]),
+    );
+
+    input.actions.bind(
+        "mv_backward",
+        Action::new(vec![
+            Binding::Key(Key::S),
+        ]),
+    );
+
+    input.actions.bind(
+        "mv_left",
+        Action::new(vec![
+            Binding::Key(Key::A),
+        ]),
+    );
+
+    input.actions.bind(
+        "mv_right",
+        Action::new(vec![
+            Binding::Key(Key::D),
+        ]),
+    );
+
+    while engine.is_running() {
+        let frame_start = Instant::now();
+        input.begin_frame();
+
+        // WINDOW / INPUT EVENTS
+        for event in winman.update() {
+            match event {
+                Event::Window {
+                    win_event: sdl3::event::WindowEvent::Resized(_, _),
+                    ..
+                } => {
+                    renderer.request_swapchain_recreation();
+                }
+                
+                sdl3::event::Event::Quit { .. } => {
+                    engine.quit();
+                }
+
+                sdl3::event::Event::KeyDown {
+                    scancode: Some(sc),
+                    repeat,
+                    ..
+                } => {
+                    if let Some(key) = Key::from_scancode(sc) {
+                        input.process_event(InputEvent::Key {
+                            key,
+                            pressed: true,
+                            repeat,
+                        });
+                    }
+                }
+
+                sdl3::event::Event::MouseButtonDown { mouse_btn, .. } => {
+                    input.process_event(InputEvent::MouseButton {
+                        button: MouseButton::from_sdl(mouse_btn),
+                        pressed: true,
+                    });
+                }
+                
+                sdl3::event::Event::MouseButtonUp { mouse_btn, .. } => {
+                    input.process_event(InputEvent::MouseButton {
+                        button: MouseButton::from_sdl(mouse_btn),
+                        pressed: false,
+                    });
+                }
+
+                sdl3::event::Event::KeyUp {
+                    scancode: Some(sc),
+                    ..
+                } => {
+                    if let Some(key) = Key::from_scancode(sc) {
+                        input.process_event(InputEvent::Key {
+                            key,
+                            pressed: false,
+                            repeat: false,
+                        });
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        // INPUT
+        let speed = 130.0;
+        let mut dx = 0.0;
+        let mut dz = 0.0;
+
+        if input.is_mouse_button_pressed(MouseButton::Right) {
+            if input.is_action_pressed("mv_forward") {
+                dz = -speed;
+            }
+    
+            if input.is_action_pressed("mv_backward") {
+                dz = speed;
+            }
+    
+            if input.is_action_pressed("mv_left") {
+                dx = -speed;
+            }
+    
+            if input.is_action_pressed("mv_right") {
+                dx = speed;
+            }
+        }
+
+        player.velocity = DVec3::new(dx, 0.0, dz);
+
+        let dt = engine.get_delta();
+
+        player.update(dt);
+        engine.camera.follow(&player);
+        engine.update();
+
+        // RENDER THING
+        let (screen_x, screen_y) = renderer.render_player(&player, &engine.camera);
+
+        renderer.render(
+            winman.window.as_ref().unwrap(),
+            &mut engine,
+        );
+
+        if player.position != last_pos {
+            logger.log(&format!(
+                "Player pos: ({:.2}, {:.2}, {:.2})",
+                player.position.x,
+                player.position.y,
+                player.position.z
+            ));
+
+            last_pos = player.position;
+        }
+
+        fps.update(&logger);
+        engine.limit_fps(frame_start);
+        engine.update_delta();
+    }
+}
