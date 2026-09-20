@@ -1,54 +1,28 @@
-use std::sync::Arc;
-use smallvec::smallvec;
 use crate::engine::nodes::light::PointLight;
+use glam::{Mat4, Vec3};
+use smallvec::smallvec;
+use std::sync::Arc;
 use vulkano::{
     VulkanLibrary,
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        AutoCommandBufferBuilder,
-        CommandBufferUsage,
-        CopyBufferInfo,
-        RenderPassBeginInfo,
-        SubpassBeginInfo,
-        SubpassContents,
-        SubpassEndInfo,
-        allocator::{
-            StandardCommandBufferAllocator,
-            StandardCommandBufferAllocatorCreateInfo,
-        },
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, RenderPassBeginInfo,
+        SubpassBeginInfo, SubpassContents, SubpassEndInfo,
+        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
     },
     descriptor_set::{
-        DescriptorSet,
-        WriteDescriptorSet,
-        allocator::StandardDescriptorSetAllocator,
+        DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
     },
     device::{
-        Device,
-        DeviceCreateInfo,
-        DeviceExtensions,
-        Queue,
-        QueueCreateInfo,
-        QueueFlags,
+        Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
     },
     format::Format,
-    image::{ImageUsage, Image, view::ImageView},
-    instance::{
-        Instance,
-        InstanceCreateFlags,
-        InstanceCreateInfo,
-    },
-    memory::allocator::{
-        AllocationCreateInfo,
-        MemoryTypeFilter,
-        StandardMemoryAllocator,
-    },
+    image::{Image, ImageUsage, view::ImageView},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        DynamicState,
-        GraphicsPipeline,
-        Pipeline,
-        PipelineBindPoint,
-        PipelineLayout,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
         graphics::{
             GraphicsPipelineCreateInfo,
@@ -61,27 +35,16 @@ use vulkano::{
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
     },
-    render_pass::{
-        Framebuffer,
-        FramebufferCreateInfo,
-        RenderPass,
-    },
-    swapchain::{
-        self,
-        Surface,
-        Swapchain,
-        SwapchainCreateInfo,
-        SwapchainPresentInfo,
-    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+    swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
     sync::{self, GpuFuture},
 };
-use glam::{Mat4, Vec3};
 
+use crate::engine::Engine;
 use crate::engine::console;
 use crate::engine::mesh::{Mesh, MyVertex};
 use crate::engine::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
-use crate::engine::Engine;
 
 // Max vertices push per frame. Allocated once, overwritten every frame.
 const MAX_VERTICES: u64 = 4096;
@@ -117,6 +80,7 @@ struct SceneUniform {
 
     light_color: [f32; 3],
     light_intensity: f32,
+    light_range: f32,
 }
 
 impl Renderer {
@@ -216,16 +180,15 @@ impl Renderer {
 
         let queue = queues.next().unwrap();
 
-        let vertex_shader = shaders::vertex::load(device.clone())
-            .expect("failed to load vertext shader");
-        let fragment_shader = shaders::fragment::load(device.clone())
-            .expect("failed to load fragment shader");
+        let vertex_shader =
+            shaders::vertex::load(device.clone()).expect("failed to load vertext shader");
+        let fragment_shader =
+            shaders::fragment::load(device.clone()).expect("failed to load fragment shader");
 
         let vertex_entry = vertex_shader.entry_point("main").unwrap();
         let fragment_entry = fragment_shader.entry_point("main").unwrap();
 
-        let memory_allocator =
-            Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
         //let data: i32 = 12;
         let iter = (0..128).map(|_| 5u8);
@@ -281,12 +244,10 @@ impl Renderer {
         )
         .expect("failed to create destination buffer");
 
-        let command_buffer_allocator = Arc::new(
-            StandardCommandBufferAllocator::new(
-                device.clone(),
-                StandardCommandBufferAllocatorCreateInfo::default(),
-            ),
-        );
+        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            StandardCommandBufferAllocatorCreateInfo::default(),
+        ));
 
         let vertex_buffer = Buffer::new_slice::<MyVertex>(
             memory_allocator.clone(),
@@ -311,10 +272,7 @@ impl Renderer {
         .unwrap();
 
         builder
-            .copy_buffer(CopyBufferInfo::buffers(
-                source.clone(),
-                destination.clone(),
-            ))
+            .copy_buffer(CopyBufferInfo::buffers(source.clone(), destination.clone()))
             .unwrap();
 
         let command_buffer = builder.build().unwrap();
@@ -393,11 +351,8 @@ impl Renderer {
 
         pipeline_info.stages = stages.into_iter().collect();
 
-        pipeline_info.vertex_input_state = Some(
-            MyVertex::per_vertex()
-                .definition(&vertex_entry)
-                .unwrap(),
-        );
+        pipeline_info.vertex_input_state =
+            Some(MyVertex::per_vertex().definition(&vertex_entry).unwrap());
 
         pipeline_info.input_assembly_state = Some(InputAssemblyState::default());
         pipeline_info.viewport_state = Some(ViewportState::default());
@@ -409,26 +364,15 @@ impl Renderer {
             vulkano::pipeline::graphics::depth_stencil::DepthStencilState::simple_depth_test(),
         );
 
-        pipeline_info.color_blend_state = Some(
-            ColorBlendState::with_attachment_states(
-                1,
-                Default::default(),
-            ),
-        );
+        pipeline_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
+            1,
+            Default::default(),
+        ));
 
-        pipeline_info.subpass = Some(
-            render_pass
-                .clone()
-                .first_subpass()
-                .into(),
-        );
+        pipeline_info.subpass = Some(render_pass.clone().first_subpass().into());
 
-        let graphics_pipeline = GraphicsPipeline::new(
-            device.clone(),
-            None,
-            pipeline_info,
-        )
-        .expect("failed to create graphics pipeline");
+        let graphics_pipeline = GraphicsPipeline::new(device.clone(), None, pipeline_info)
+            .expect("failed to create graphics pipeline");
 
         let (swapchain, images) = Swapchain::new(
             device.clone(),
@@ -475,10 +419,7 @@ impl Renderer {
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![
-                            color_view.clone(),
-                            depth_view.clone(),
-                        ],
+                        attachments: vec![color_view.clone(), depth_view.clone()],
                         ..Default::default()
                     },
                 )
@@ -562,8 +503,7 @@ impl Renderer {
             self.recreate_swapchain = false;
         }
 
-        let command_buffer_allocator =
-            self.command_buffer_allocator.as_ref().unwrap();
+        let command_buffer_allocator = self.command_buffer_allocator.as_ref().unwrap();
         let queue = self.queue.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
         let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
@@ -580,11 +520,7 @@ impl Renderer {
 
         let forward = camera.rotation * Vec3::NEG_Z;
 
-        let view = glam::camera::rh::view::look_at_mat4(
-            position,
-            position + forward,
-            Vec3::Y,
-        );
+        let view = glam::camera::rh::view::look_at_mat4(position, position + forward, Vec3::Y);
 
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
@@ -594,20 +530,28 @@ impl Renderer {
         );
 
         // World-space light position.
-        for (transform, light) in engine.world.query::<(&Transform, &PointLight)>().iter(&engine.world) {
+        for (transform, light) in engine
+            .world
+            .query::<(&Transform, &PointLight)>()
+            .iter(&engine.world)
+        {
             // light data
         }
 
         // Convert the light to camera-relative coordinates.
-        let (relative_light_position, light_color, light_intensity) =
-            match engine.world.query::<(&Transform, &PointLight)>().iter(&engine.world).next() {
-                Some((transform, light)) => (
-                    transform.position.camera_relative_f32(camera.position),
-                    light.color,
-                    light.intensity,
-                ),
-                None => return,
-            };
+        let (relative_light_position, light_color, light_intensity) = match engine
+            .world
+            .query::<(&Transform, &PointLight)>()
+            .iter(&engine.world)
+            .next()
+        {
+            Some((transform, light)) => (
+                transform.position.camera_relative_f32(camera.position),
+                light.color,
+                light.intensity,
+            ),
+            None => return,
+        };
 
         let scene_buffer = Buffer::from_data(
             self.memory_allocator.as_ref().unwrap().clone(),
@@ -628,6 +572,7 @@ impl Renderer {
                 _padding1: 0.0,
                 light_color: light_color.to_array(),
                 light_intensity,
+                light_range: 500.0,
             },
         )
         .unwrap();
@@ -655,7 +600,11 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut objects = Vec::new();
 
-        for (transform, mesh) in engine.world.query::<(&Transform, &Mesh)>().iter(&engine.world) {
+        for (transform, mesh) in engine
+            .world
+            .query::<(&Transform, &Mesh)>()
+            .iter(&engine.world)
+        {
             let start_vertex = vertices.len();
 
             vertices.extend_from_slice(&mesh.vertices);
@@ -705,10 +654,7 @@ impl Renderer {
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
-            extent: [
-                dimensions[0] as f32,
-                dimensions[1] as f32,
-            ],
+            extent: [dimensions[0] as f32, dimensions[1] as f32],
             depth_range: 0.0..=1.0,
         };
 
@@ -744,11 +690,7 @@ impl Renderer {
         for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
             let relative_position = object_position.camera_relative_f32(camera.position);
 
-            let model = Mat4::from_scale_rotation_translation(
-                scale,
-                rotation,
-                relative_position,
-            );
+            let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
 
             let scene_buffer = Buffer::from_data(
                 self.memory_allocator.as_ref().unwrap().clone(),
@@ -773,6 +715,7 @@ impl Renderer {
                     _padding1: 0.0,
                     light_color: [1.0, 1.0, 1.0],
                     light_intensity: 20.0,
+                    light_range: 500.0,
                 },
             )
             .unwrap();
@@ -806,9 +749,7 @@ impl Renderer {
             }
         }
 
-        builder
-            .end_render_pass(SubpassEndInfo::default())
-            .unwrap();
+        builder.end_render_pass(SubpassEndInfo::default()).unwrap();
 
         let command_buffer = builder.build().unwrap();
 
@@ -818,15 +759,10 @@ impl Renderer {
             .unwrap()
             .then_swapchain_present(
                 queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    swapchain.clone(),
-                    image_index,
-                ),
+                SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
             );
 
-        let _future = future
-            .then_signal_fence_and_flush()
-            .unwrap();
+        let _future = future.then_signal_fence_and_flush().unwrap();
     }
 
     pub fn request_swapchain_recreation(&mut self) {
