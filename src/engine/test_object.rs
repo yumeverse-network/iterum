@@ -66,6 +66,26 @@ pub fn spawn(world: &mut World) {
         Mesh::cylinder(8, 1.0, 1.0),
     ));
 
+    // Spawn cylinder
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.5, 2.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::tube(8, 1.0, 1.0, 0.2),
+    ));
+
+    // Spawn disc
+    world.spawn((
+        Transform {
+            position: DVec3::new(5.0, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::disc(8, 1.0),
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {
