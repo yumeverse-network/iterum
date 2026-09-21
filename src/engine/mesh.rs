@@ -231,4 +231,44 @@ impl Mesh {
             ],
         }
     }
+
+    // Circle
+    pub fn circle(segments: i32, radius: f32) -> Self {
+        let mut verts = Vec::new();
+    
+        fn v(position: Vec3, normal: Vec3) -> Vertices {
+            Vertices {
+                position: position.to_array(),
+                normal: normal.to_array(),
+            }
+        }
+    
+        for i in 0..segments {
+            let theta0 =
+                2.0 * std::f32::consts::PI * i as f32 / segments as f32;
+            let theta1 =
+                2.0 * std::f32::consts::PI * (i + 1) as f32 / segments as f32;
+    
+            let p0 = Vec3::new(
+                radius * theta0.cos(),
+                radius * theta0.sin(),
+                0.0,
+            );
+    
+            let p1 = Vec3::new(
+                radius * theta1.cos(),
+                radius * theta1.sin(),
+                0.0,
+            );
+    
+            // One triangle of the fan
+            verts.push(v(Vec3::ZERO, Vec3::Z));
+            verts.push(v(p0, Vec3::Z));
+            verts.push(v(p1, Vec3::Z));
+        }
+    
+        Self {
+            vertices: verts,
+        }
+    }
 }

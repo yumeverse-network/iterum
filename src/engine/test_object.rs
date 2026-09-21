@@ -46,6 +46,16 @@ pub fn spawn(world: &mut World) {
         Mesh::triangle(),
     ));
 
+    // Spawn circle
+    world.spawn((
+        Transform {
+            position: DVec3::new(-2.5, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::circle(8, 1.0),
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {
