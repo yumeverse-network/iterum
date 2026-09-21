@@ -27,7 +27,12 @@ void main() {
 
     float diffuse = max(dot(normal, light_direction), 0.5);
 
-    float attenuation = 1.0 / max(distance * distance, 0.01);
+    const float minimum_illumination = 0.25;
+    float light_range = sqrt(max(light_intensity, 0.0) / minimum_illumination);
+    float range_factor = clamp(1.0 - distance / max(light_range, 0.0001), 0.0, 1.0);
+    range_factor *= range_factor;
+
+    float attenuation = range_factor / max(distance * distance, 0.01);
 
     vec3 lighting =
         light_color *

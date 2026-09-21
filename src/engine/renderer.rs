@@ -70,7 +70,6 @@ struct SceneUniform {
 
     light_color: [f32; 3],
     light_intensity: f32,
-    light_range: f32,
 }
 
 impl Renderer {
@@ -630,7 +629,6 @@ impl Renderer {
                 _padding1: 0.0,
                 light_color: light_color.to_array(),
                 light_intensity,
-                light_range: 500.0,
             },
         )
         .unwrap();
@@ -772,9 +770,8 @@ impl Renderer {
                         relative_light_position.z as f32,
                     ],
                     _padding1: 0.0,
-                    light_color: [1.0, 1.0, 1.0],
-                    light_intensity: 20.0,
-                    light_range: 500.0,
+                    light_color: light_color.to_array(),
+                    light_intensity,
                 },
             )
             .unwrap();

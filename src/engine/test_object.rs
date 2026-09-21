@@ -89,14 +89,13 @@ pub fn spawn(world: &mut World) {
     // Spawn point light
     world.spawn((
         Transform {
-            position: DVec3::new(3.0, 3.0, -5.0),
+            position: DVec3::new(0.0, 1.25, 0.0),
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
         PointLight {
             color: Vec3::ONE,
-            intensity: 20.0,
-            range: 100.0,
+            intensity: 250.0,
         },
     ));
 }

@@ -5,5 +5,4 @@ use glam::Vec3;
 pub struct PointLight {
     pub color: Vec3,
     pub intensity: f32,
-    pub range: f32,
 }
