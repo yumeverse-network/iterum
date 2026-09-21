@@ -125,8 +125,8 @@ Please see `LICENSE` for more detail.
 
 - [ ] Windows x86_64
 - [ ] Windows Arm64 (Considering)
-- [ ] Linux x86_64 - Wayland & X11
-- [ ] Linux Arm64 - Wayland & X11
+- [ ] Linux x86_64
+- [ ] Linux Arm64
 - [ ] macOS - MoltenVK or native
 
 ## Installation
