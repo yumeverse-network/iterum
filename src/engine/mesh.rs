@@ -204,12 +204,12 @@ impl Mesh {
 
         Self {
             vertices: vec![
-                v(Vec3::new(-1.0, -1.0,  1.0), Vec3::Z),
-                v(Vec3::new( 1.0, -1.0,  1.0), Vec3::Z),
-                v(Vec3::new( 1.0,  1.0,  1.0), Vec3::Z),
-                v(Vec3::new(-1.0, -1.0,  1.0), Vec3::Z),
-                v(Vec3::new( 1.0,  1.0,  1.0), Vec3::Z),
-                v(Vec3::new(-1.0,  1.0,  1.0), Vec3::Z),
+                v(Vec3::new(-1.0, -1.0,  0.0), Vec3::Z),
+                v(Vec3::new( 1.0, -1.0,  0.0), Vec3::Z),
+                v(Vec3::new( 1.0,  1.0,  0.0), Vec3::Z),
+                v(Vec3::new(-1.0, -1.0,  0.0), Vec3::Z),
+                v(Vec3::new( 1.0,  1.0,  0.0), Vec3::Z),
+                v(Vec3::new(-1.0,  1.0,  0.0), Vec3::Z),
             ],
         }
     }
@@ -225,9 +225,9 @@ impl Mesh {
 
         Self {
             vertices: vec![
-                v(Vec3::new(-1.0, -1.0,  1.0), Vec3::Z),
-                v(Vec3::new( 1.0, -1.0,  1.0), Vec3::Z),
-                v(Vec3::new( 0.0, 1.0,  1.0), Vec3::Z),
+                v(Vec3::new(-1.0, -1.0,  0.0), Vec3::Z),
+                v(Vec3::new( 1.0, -1.0,  0.0), Vec3::Z),
+                v(Vec3::new( 0.0, 1.0,  0.0), Vec3::Z),
             ],
         }
     }
