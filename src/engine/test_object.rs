@@ -79,7 +79,7 @@ pub fn spawn(world: &mut World) {
     // Spawn disc
     world.spawn((
         Transform {
-            position: DVec3::new(5.0, 0.0, -10.0),
+            position: DVec3::new(5.0, 2.5, -10.0),
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },

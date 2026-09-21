@@ -444,19 +444,19 @@ impl Mesh {
     
             let p0 = Vec3::new(
                 radius * theta0.cos(),
-                radius * theta0.sin(),
                 0.0,
+                radius * theta0.sin(),
             );
     
             let p1 = Vec3::new(
                 radius * theta1.cos(),
-                radius * theta1.sin(),
                 0.0,
+                radius * theta1.sin(),
             );
     
-            verts.push(v(Vec3::ZERO, Vec3::Z));
-            verts.push(v(p0, Vec3::Z));
-            verts.push(v(p1, Vec3::Z));
+            verts.push(v(Vec3::ZERO, Vec3::Y));
+            verts.push(v(p0, Vec3::Y));
+            verts.push(v(p1, Vec3::Y));
         }
     
         Self {
