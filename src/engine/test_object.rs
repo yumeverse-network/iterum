@@ -26,10 +26,34 @@ pub fn spawn(world: &mut World) {
         Mesh::icosphere(1),
     ));
 
+    // Spawn plane
+    world.spawn((
+        Transform {
+            position: DVec3::new(5.0, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::plane(),
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {
             position: DVec3::new(3.0, 3.0, -5.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        PointLight {
+            color: Vec3::ONE,
+            intensity: 20.0,
+            range: 100.0,
+        },
+    ));
+
+    // Spawn another point light
+    world.spawn((
+        Transform {
+            position: DVec3::new(-3.0, 3.0, -15.0),
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },

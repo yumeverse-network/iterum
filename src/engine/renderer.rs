@@ -30,7 +30,7 @@ use vulkano::{
 
 use crate::engine::Engine;
 use crate::engine::console;
-use crate::engine::mesh::{Mesh, MyVertex};
+use crate::engine::mesh::{Mesh, Vertices};
 use crate::engine::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
@@ -48,7 +48,7 @@ pub struct Renderer {
     framebuffers: Vec<Arc<Framebuffer>>,
     command_buffer_allocator: Option<Arc<StandardCommandBufferAllocator>>,
     graphics_pipeline: Option<Arc<GraphicsPipeline>>,
-    vertex_buffer: Option<Subbuffer<[MyVertex]>>,
+    vertex_buffer: Option<Subbuffer<[Vertices]>>,
     elapsed: f32,
     recreate_swapchain: bool,
     msaa_samples: SampleCount,
@@ -255,7 +255,7 @@ impl Renderer {
             StandardCommandBufferAllocatorCreateInfo::default(),
         ));
 
-        let vertex_buffer = Buffer::new_slice::<MyVertex>(
+        let vertex_buffer = Buffer::new_slice::<Vertices>(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -371,7 +371,7 @@ impl Renderer {
         pipeline_info.stages = stages.into_iter().collect();
 
         pipeline_info.vertex_input_state =
-            Some(MyVertex::per_vertex().definition(&vertex_entry).unwrap());
+            Some(Vertices::per_vertex().definition(&vertex_entry).unwrap());
 
         pipeline_info.input_assembly_state = Some(InputAssemblyState::default());
         pipeline_info.viewport_state = Some(ViewportState::default());
