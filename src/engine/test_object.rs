@@ -16,6 +16,16 @@ pub fn spawn(world: &mut World) {
         Mesh::cube(),
     ));
 
+    // Spawn icosphere
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.5, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::icosphere(1),
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {
