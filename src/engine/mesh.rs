@@ -213,4 +213,22 @@ impl Mesh {
             ],
         }
     }
+
+    // Triangle
+    pub fn triangle() -> Self {
+        fn v(position: Vec3, normal: Vec3) -> Vertices {
+            Vertices {
+                position: position.to_array(),
+                normal: normal.to_array(),
+            }
+        }
+
+        Self {
+            vertices: vec![
+                v(Vec3::new(-1.0, -1.0,  1.0), Vec3::Z),
+                v(Vec3::new( 1.0, -1.0,  1.0), Vec3::Z),
+                v(Vec3::new( 0.0, 1.0,  1.0), Vec3::Z),
+            ],
+        }
+    }
 }
