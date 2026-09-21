@@ -6,6 +6,7 @@ use crate::engine::mesh::Mesh;
 use crate::engine::transform::Transform;
 
 pub fn spawn(world: &mut World) {
+    // Spawn cube
     world.spawn((
         Transform {
             position: DVec3::new(0.0, 0.0, -10.0),
@@ -15,6 +16,7 @@ pub fn spawn(world: &mut World) {
         Mesh::cube(),
     ));
 
+    // Spawn point light
     world.spawn((
         Transform {
             position: DVec3::new(3.0, 3.0, -5.0),

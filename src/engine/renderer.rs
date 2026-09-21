@@ -3,25 +3,16 @@ use glam::{Mat4, Vec3};
 use smallvec::smallvec;
 use std::sync::Arc;
 use vulkano::{
-    VulkanLibrary,
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
+    VulkanLibrary, buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer}, command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, RenderPassBeginInfo,
         SubpassBeginInfo, SubpassContents, SubpassEndInfo,
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-    },
-    descriptor_set::{
+    }, descriptor_set::{
         DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
-    },
-    device::{
+    }, device::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
-    },
-    format::Format,
-    image::{Image, ImageUsage, view::ImageView},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{
+    }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
         PipelineShaderStageCreateInfo,
         graphics::{
@@ -34,10 +25,7 @@ use vulkano::{
             viewport::{Viewport, ViewportState},
         },
         layout::PipelineDescriptorSetLayoutCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
-    swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
-    sync::{self, GpuFuture},
+    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
 };
 
 use crate::engine::Engine;
@@ -63,6 +51,8 @@ pub struct Renderer {
     vertex_buffer: Option<Subbuffer<[MyVertex]>>,
     elapsed: f32,
     recreate_swapchain: bool,
+    msaa_samples: SampleCount,
+    pending_msaa_samples: Option<SampleCount>,
 }
 
 use crate::engine::camera::Camera;
@@ -99,7 +89,23 @@ impl Renderer {
             vertex_buffer: None,
             elapsed: 0.0,
             recreate_swapchain: false,
+            msaa_samples: SampleCount::Sample4,
+            pending_msaa_samples: None,
         }
+    }
+
+    pub fn set_msaa_samples(&mut self, samples: SampleCount) {
+        if samples != self.msaa_samples {
+            self.pending_msaa_samples = Some(samples);
+        }
+    }
+    
+    pub fn set_msaa_enabled(&mut self, enabled: bool) {
+        self.set_msaa_samples(if enabled {
+            SampleCount::Sample4
+        } else {
+            SampleCount::Sample1
+        });
     }
 
     fn select_physical_device(
@@ -314,21 +320,34 @@ impl Renderer {
         let render_pass = vulkano::single_pass_renderpass!(
             device.clone(),
             attachments: {
-                color: {
+                /*color: {
                     format: image_format,
-                    samples: 1,
+                    samples: 4, // here
                     load_op: Clear,
                     store_op: Store,
-                },
-                depth: {
-                    format: Format::D32_SFLOAT,
-                    samples: 1,
+                },*/
+                multisampled_color: {
+                    format: image_format,
+                    samples: 4,
                     load_op: Clear,
                     store_op: DontCare,
                 },
+                depth: {
+                    format: Format::D32_SFLOAT,
+                    samples: 4, // here
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+                swapchain_color: { // this
+                    format: image_format,
+                    samples: 1,
+                    load_op: DontCare,
+                    store_op: Store,
+                },
             },
             pass: {
-                color: [color],
+                color: [multisampled_color], // color
+                color_resolve: [swapchain_color], // that
                 depth_stencil: {depth},
             },
         )
@@ -358,7 +377,11 @@ impl Renderer {
         pipeline_info.viewport_state = Some(ViewportState::default());
         pipeline_info.dynamic_state.insert(DynamicState::Viewport);
         pipeline_info.rasterization_state = Some(RasterizationState::default());
-        pipeline_info.multisample_state = Some(MultisampleState::default());
+        //pipeline_info.multisample_state = Some(MultisampleState::default());
+        pipeline_info.multisample_state = Some(MultisampleState {
+            rasterization_samples: SampleCount::Sample4,
+            ..Default::default()
+        });
 
         pipeline_info.depth_stencil_state = Some(
             vulkano::pipeline::graphics::depth_stencil::DepthStencilState::simple_depth_test(),
@@ -381,7 +404,7 @@ impl Renderer {
                 min_image_count: caps.min_image_count + 1,
                 image_format,
                 image_extent: dimensions.into(),
-                image_usage: ImageUsage::COLOR_ATTACHMENT,
+                image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha,
                 ..Default::default()
             },
@@ -392,7 +415,7 @@ impl Renderer {
             .iter()
             .map(|image| ImageView::new_default(image.clone()).unwrap())
             .collect::<Vec<_>>();
-
+        
         let depth_views = images
             .iter()
             .map(|_| {
@@ -415,11 +438,41 @@ impl Renderer {
         let framebuffers = image_views
             .iter()
             .zip(depth_views.iter())
-            .map(|(color_view, depth_view)| {
+            .map(|(swapchain_view, depth_view)| {
+                let multisampled_color = Image::new(
+                    memory_allocator.clone(),
+                    vulkano::image::ImageCreateInfo {
+                        format: image_format,
+                        extent: [dimensions.0, dimensions.1, 1],
+                        samples: SampleCount::Sample4,
+                        usage: ImageUsage::COLOR_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap();
+
+                let multisampled_depth = Image::new(
+                    memory_allocator.clone(),
+                    vulkano::image::ImageCreateInfo {
+                        format: Format::D32_SFLOAT,
+                        extent: [dimensions.0, dimensions.1, 1],
+                        samples: SampleCount::Sample4,
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap();
+
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![color_view.clone(), depth_view.clone()],
+                        attachments: vec![
+                            ImageView::new_default(multisampled_color).unwrap(),
+                            ImageView::new_default(multisampled_depth).unwrap(),
+                            swapchain_view.clone(),
+                        ],
                         ..Default::default()
                     },
                 )
@@ -501,6 +554,11 @@ impl Renderer {
 
             self.swapchain = Some(new_swapchain);
             self.recreate_swapchain = false;
+        }
+
+        if let Some(samples) = self.pending_msaa_samples.take() {
+            self.msaa_samples = samples;
+            self.rebuild_render_targets(window);
         }
 
         let command_buffer_allocator = self.command_buffer_allocator.as_ref().unwrap();
@@ -671,6 +729,7 @@ impl Renderer {
                     clear_values: vec![
                         Some([0.02, 0.02, 0.02, 1.0].into()),
                         Some(1.0f32.into()), // add
+                        None,
                     ],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
@@ -766,6 +825,10 @@ impl Renderer {
     }
 
     pub fn request_swapchain_recreation(&mut self) {
+        self.recreate_swapchain = true;
+    }
+
+    fn rebuild_render_targets(&mut self, _window: &sdl3::video::Window) {
         self.recreate_swapchain = true;
     }
 
