@@ -22,8 +22,6 @@ fn main() {
     let mut input = InputManager::new();
     let mut player = engine::player::Player::new();
 
-    let mut last_pos = DVec3::ZERO;
-
     engine.init();
 
     logger.log("Helloooo");
