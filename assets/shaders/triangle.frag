@@ -25,7 +25,7 @@ void main() {
 
     light_direction = normalize(light_direction);
 
-    float diffuse = max(dot(normal, light_direction), 0.0);
+    float diffuse = max(dot(normal, light_direction), 0.5);
 
     float attenuation = 1.0 / max(distance * distance, 0.01);
 
