@@ -1,10 +1,9 @@
 use glam::DVec3;
 use crate::engine::mesh::Vertices;
-use crate::engine::camera::Camera;
 
 #[derive(Clone, Copy)]
 pub struct Chunk {
-    pub face: u8,        // 0..6
+    pub face: u8,
     pub level: u32,
     pub x: u32,
     pub y: u32,
@@ -18,7 +17,6 @@ pub struct PlanetChunkMesh {
     pub vertices: Vec<Vertices>,
 }
 
-// --- 1. Cube face -> unit sphere ---
 pub fn cube_face_point(face: u8, u: f64, v: f64) -> DVec3 {
     let (x, y, z) = match face {
         0 => ( 1.0,  v,  -u),
@@ -32,18 +30,16 @@ pub fn cube_face_point(face: u8, u: f64, v: f64) -> DVec3 {
     DVec3::new(x, y, z).normalize()
 }
 
-// --- 2. Distance from point to chunk center in camera space ---
-fn chunk_center_world(planet_center: DVec3, radius: f64, chunk: &Chunk) -> DVec3 {
+/*fn chunk_center_world(planet_center: DVec3, radius: f64, chunk: &Chunk) -> DVec3 {
     planet_center + chunk.center_dir * radius
-}
+}*/
 
-// --- 3. Auto-select chunks: recursive subdivide based on angular size ---
 pub fn select_chunks(
     planet_center: DVec3,
     radius: f64,
     camera_pos: DVec3,
     max_level: u32,
-    pixel_threshold: f64,  // e.g. 8.0 — target chunk size in pixels
+    pixel_threshold: f64,  // 8.0 --- target chunk size in pixels
     fov_radians: f64,
     screen_height: f64,
 ) -> Vec<Chunk> {
@@ -75,16 +71,13 @@ fn recurse(
     let chunk_world_size = face_arc / n as f64;
     let angular = chunk_world_size / dist.max(1.0);
 
-    // Screen-pixel size of the chunk.
     let pixels = angular * (screen_h / (2.0 * (fov / 2.0).tan()));
 
-    // Cull chunks behind camera.
     if pixels < 0.5 {
         return;
     }
 
     if pixels > px_thresh && level < max_level {
-        // Subdivide.
         for dy in 0..2 {
             for dx in 0..2 {
                 recurse(face, level + 1, x * 2 + dx, y * 2 + dy,
@@ -97,7 +90,6 @@ fn recurse(
     }
 }
 
-// --- 4. Build one chunk mesh (camera-relative, f32, small numbers) ---
 pub fn build_chunk_mesh(
     chunk: &Chunk,
     planet_center: DVec3,
