@@ -2,7 +2,7 @@
 use crate::engine::nodes::light::PointLight;
 use crate::engine::nodes::planet::Planet;
 use crate::engine::planet;
-use glam::{Mat4, Vec3, Quat, DVec3};
+use glam::{Mat4, Vec3, DVec3};
 use smallvec::smallvec;
 use std::sync::Arc;
 use vulkano::{
@@ -16,18 +16,9 @@ use vulkano::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
     }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-        graphics::{
-            GraphicsPipelineCreateInfo,
-            color_blend::ColorBlendState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
+            GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::RasterizationState, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
+        }, layout::PipelineDescriptorSetLayoutCreateInfo,
     }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
 };
 
@@ -58,8 +49,10 @@ pub struct Renderer {
     pending_msaa_samples: Option<SampleCount>,
 }
 
+/*
 use crate::engine::camera::Camera;
 use crate::engine::player::Player;
+*/
 
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
@@ -96,19 +89,19 @@ impl Renderer {
         }
     }
 
-    pub fn set_msaa_samples(&mut self, samples: SampleCount) {
+    /*pub fn set_msaa_samples(&mut self, samples: SampleCount) {
         if samples != self.msaa_samples {
             self.pending_msaa_samples = Some(samples);
         }
-    }
+    }*/
     
-    pub fn set_msaa_enabled(&mut self, enabled: bool) {
+    /*pub fn set_msaa_enabled(&mut self, enabled: bool) {
         self.set_msaa_samples(if enabled {
             SampleCount::Sample1
         } else {
             SampleCount::Sample1
         });
-    }
+    }*/
 
     fn select_physical_device(
         instance: &Arc<Instance>,
@@ -385,9 +378,10 @@ impl Renderer {
         });
         pipeline_info.multisample_state = Some(MultisampleState::default());
 
-        pipeline_info.depth_stencil_state = Some(
-            vulkano::pipeline::graphics::depth_stencil::DepthStencilState::simple_depth_test(),
-        );
+        pipeline_info.depth_stencil_state = Some(vulkano::pipeline::graphics::depth_stencil::DepthStencilState {
+            depth: Some(DepthState::simple()),
+            ..Default::default()
+        });
 
         pipeline_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
             1,
@@ -569,13 +563,13 @@ impl Renderer {
         );
 
         // World-space light position.
-        for (transform, light) in engine
+        /*for (transform, light) in engine
             .world
             .query::<(&Transform, &PointLight)>()
             .iter(&engine.world)
         {
             // light data
-        }
+        }*/
 
         // Convert the light to camera-relative coordinates.
         let (relative_light_position, light_color, light_intensity) = match engine
@@ -670,7 +664,7 @@ impl Renderer {
             return;
         }
 
-        let vertex_count = vertices.len() as u32;
+        //let vertex_count = vertices.len() as u32;
 
         // Write the new vertices into the pre-allocated buffer.
         {
@@ -881,9 +875,9 @@ impl Renderer {
         self.recreate_swapchain = true;
     }
 
-    pub fn render_player(&mut self, player: &Player, camera: &Camera) -> (f32, f32) {
+    /*pub fn render_player(&mut self, player: &Player, camera: &Camera) -> (f32, f32) {
         let screen_x = (player.position.x - camera.position.x) as f32;
         let screen_y = (player.position.y - camera.position.y) as f32;
         (screen_x, screen_y)
-    }
+    }*/
 }
