@@ -1,5 +1,8 @@
+// src/engine/renderer.rs
 use crate::engine::nodes::light::PointLight;
-use glam::{Mat4, Vec3};
+use crate::engine::nodes::planet::Planet;
+use crate::engine::planet;
+use glam::{Mat4, Vec3, Quat, DVec3};
 use smallvec::smallvec;
 use std::sync::Arc;
 use vulkano::{
@@ -35,7 +38,7 @@ use crate::engine::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
 // Max vertices push per frame. Allocated once, overwritten every frame.
-const MAX_VERTICES: u64 = 4096;
+const MAX_VERTICES: u64 = 8_000_000;
 
 pub struct Renderer {
     device: Option<Arc<Device>>,
@@ -88,7 +91,7 @@ impl Renderer {
             vertex_buffer: None,
             elapsed: 0.0,
             recreate_swapchain: false,
-            msaa_samples: SampleCount::Sample4,
+            msaa_samples: SampleCount::Sample1,
             pending_msaa_samples: None,
         }
     }
@@ -101,7 +104,7 @@ impl Renderer {
     
     pub fn set_msaa_enabled(&mut self, enabled: bool) {
         self.set_msaa_samples(if enabled {
-            SampleCount::Sample4
+            SampleCount::Sample1
         } else {
             SampleCount::Sample1
         });
@@ -325,28 +328,29 @@ impl Renderer {
                     load_op: Clear,
                     store_op: Store,
                 },*/
-                multisampled_color: {
+                /*multisampled_color: {
                     format: image_format,
-                    samples: 4,
+                    samples: 1,
                     load_op: Clear,
                     store_op: DontCare,
-                },
-                depth: {
-                    format: Format::D32_SFLOAT,
-                    samples: 4, // here
-                    load_op: Clear,
-                    store_op: DontCare,
-                },
+                },*/
                 swapchain_color: { // this
                     format: image_format,
                     samples: 1,
-                    load_op: DontCare,
+                    load_op: Clear,
                     store_op: Store,
+                },
+                depth: {
+                    format: Format::D32_SFLOAT,
+                    samples: 1, // here
+                    load_op: Clear,
+                    store_op: DontCare,
                 },
             },
             pass: {
-                color: [multisampled_color], // color
-                color_resolve: [swapchain_color], // that
+                //color: [multisampled_color], // color
+                //color_resolve: [swapchain_color], // that
+                color: [swapchain_color],
                 depth_stencil: {depth},
             },
         )
@@ -375,12 +379,11 @@ impl Renderer {
         pipeline_info.input_assembly_state = Some(InputAssemblyState::default());
         pipeline_info.viewport_state = Some(ViewportState::default());
         pipeline_info.dynamic_state.insert(DynamicState::Viewport);
-        pipeline_info.rasterization_state = Some(RasterizationState::default());
-        //pipeline_info.multisample_state = Some(MultisampleState::default());
-        pipeline_info.multisample_state = Some(MultisampleState {
-            rasterization_samples: SampleCount::Sample4,
+        pipeline_info.rasterization_state = Some(RasterizationState {
+            cull_mode: vulkano::pipeline::graphics::rasterization::CullMode::None,
             ..Default::default()
         });
+        pipeline_info.multisample_state = Some(MultisampleState::default());
 
         pipeline_info.depth_stencil_state = Some(
             vulkano::pipeline::graphics::depth_stencil::DepthStencilState::simple_depth_test(),
@@ -438,39 +441,12 @@ impl Renderer {
             .iter()
             .zip(depth_views.iter())
             .map(|(swapchain_view, depth_view)| {
-                let multisampled_color = Image::new(
-                    memory_allocator.clone(),
-                    vulkano::image::ImageCreateInfo {
-                        format: image_format,
-                        extent: [dimensions.0, dimensions.1, 1],
-                        samples: SampleCount::Sample4,
-                        usage: ImageUsage::COLOR_ATTACHMENT,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo::default(),
-                )
-                .unwrap();
-
-                let multisampled_depth = Image::new(
-                    memory_allocator.clone(),
-                    vulkano::image::ImageCreateInfo {
-                        format: Format::D32_SFLOAT,
-                        extent: [dimensions.0, dimensions.1, 1],
-                        samples: SampleCount::Sample4,
-                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo::default(),
-                )
-                .unwrap();
-
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
                         attachments: vec![
-                            ImageView::new_default(multisampled_color).unwrap(),
-                            ImageView::new_default(multisampled_depth).unwrap(),
                             swapchain_view.clone(),
+                            depth_view.clone(),
                         ],
                         ..Default::default()
                     },
@@ -569,16 +545,22 @@ impl Renderer {
 
         let dimensions = swapchain.image_extent();
 
-        let position = Vec3::new(
+        /*let position = Vec3::new(
             camera.position.x as f32,
             camera.position.y as f32,
             camera.position.z as f32,
-        );
+        );*/
 
         let forward = camera.rotation * Vec3::NEG_Z;
 
-        let view = glam::camera::rh::view::look_at_mat4(position, position + forward, Vec3::Y);
-
+        //let view = glam::camera::rh::view::look_at_mat4(position, position + forward, Vec3::Y);
+        /*let view = glam::camera::rh::view::look_at_mat4(
+            Vec3::ZERO,
+            forward,
+            Vec3::Y,
+        );*/
+        let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
+        
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
@@ -610,42 +592,6 @@ impl Renderer {
             None => return,
         };
 
-        let scene_buffer = Buffer::from_data(
-            self.memory_allocator.as_ref().unwrap().clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            SceneUniform {
-                model: Mat4::IDENTITY.to_cols_array_2d(),
-                view: view.to_cols_array_2d(),
-                projection: projection.to_cols_array_2d(),
-                light_position: relative_light_position.to_array(),
-                _padding1: 0.0,
-                light_color: light_color.to_array(),
-                light_intensity,
-            },
-        )
-        .unwrap();
-
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
-            self.device.as_ref().unwrap().clone(),
-            Default::default(),
-        );
-
-        let descriptor_set = DescriptorSet::new(
-            Arc::new(descriptor_set_allocator),
-            graphics_pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, scene_buffer.clone())],
-            [],
-        )
-        .unwrap();
-
         // Clone the Subbuffer
         let vertex_buffer = self.vertex_buffer.as_ref().unwrap().clone();
 
@@ -654,17 +600,17 @@ impl Renderer {
         self.elapsed += dt;
 
         let mut vertices = Vec::new();
-        let mut objects = Vec::new();
-
+        let mut objects = Vec::new();          // (start, count, position, rotation, scale)
+        let mut planet_objects: Vec<(usize, usize, DVec3)> = Vec::new();   // (start, count, planet_pos)
+        
+        // --- existing meshes ---
         for (transform, mesh) in engine
             .world
             .query::<(&Transform, &Mesh)>()
             .iter(&engine.world)
         {
             let start_vertex = vertices.len();
-
             vertices.extend_from_slice(&mesh.vertices);
-
             objects.push((
                 start_vertex,
                 mesh.vertices.len(),
@@ -673,8 +619,54 @@ impl Renderer {
                 transform.scale,
             ));
         }
+        
+        // Planets (auto chunking)
+        let screen_h = dimensions[1] as f64;
+        
+        for (transform, planet) in engine
+            .world
+            .query::<(&Transform, &Planet)>()
+            .iter(&engine.world)
+        {
+            let chunks = planet::select_chunks(
+                transform.position,
+                planet.radius,
+                camera.position,
+                planet.max_level,
+                16.0,
+                (camera.fov as f64).to_radians(),
+                screen_h,
+            );
 
+            let planet_start = vertices.len();
+
+            for chunk in &chunks {
+                let cm = planet::build_chunk_mesh(
+                    chunk,
+                    transform.position,
+                    planet.radius,
+                    camera.position,
+                    4,
+                );
+                vertices.extend_from_slice(&cm.vertices);
+            }
+
+            let planet_count = vertices.len() - planet_start;
+            if planet_count > 0 {
+                planet_objects.push((planet_start, planet_count, transform.position));
+            }
+        }
+        
         if vertices.is_empty() {
+            return;
+        }
+        
+        if vertices.len() as u64 > MAX_VERTICES {
+            eprintln!(
+                "Vertex buffer overflow: {} > {}",
+                vertices.len(),
+                MAX_VERTICES
+            );
             return;
         }
 
@@ -727,7 +719,6 @@ impl Renderer {
                     clear_values: vec![
                         Some([0.02, 0.02, 0.02, 1.0].into()),
                         Some(1.0f32.into()), // add
-                        None,
                     ],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
@@ -743,6 +734,67 @@ impl Renderer {
             .unwrap()
             .bind_vertex_buffers(0, draw_buffer)
             .unwrap();
+
+        for (start_vertex, vertex_count, planet_position) in &planet_objects {
+            let relative_position = planet_position.camera_relative_f32(camera.position);
+
+            let model = Mat4::from_translation(relative_position);
+
+            let scene_buffer = Buffer::from_data(
+                self.memory_allocator.as_ref().unwrap().clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::UNIFORM_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                SceneUniform {
+                    model: model.to_cols_array_2d(),
+                    view: view.to_cols_array_2d(),
+                    projection: projection.to_cols_array_2d(),
+                    light_position: [
+                        relative_light_position.x as f32,
+                        relative_light_position.y as f32,
+                        relative_light_position.z as f32,
+                    ],
+                    _padding1: 0.0,
+                    light_color: light_color.to_array(),
+                    light_intensity,
+                },
+            )
+            .unwrap();
+
+            let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
+                self.device.as_ref().unwrap().clone(),
+                Default::default(),
+            );
+
+            let descriptor_set = DescriptorSet::new(
+                Arc::new(descriptor_set_allocator),
+                graphics_pipeline.layout().set_layouts()[0].clone(),
+                [WriteDescriptorSet::buffer(0, scene_buffer.clone())],
+                [],
+            )
+            .unwrap();
+
+            builder
+                .bind_descriptor_sets(
+                    PipelineBindPoint::Graphics,
+                    graphics_pipeline.layout().clone(),
+                    0,
+                    descriptor_set,
+                )
+                .unwrap();
+
+            unsafe {
+                builder
+                    .draw(*vertex_count as u32, 1, *start_vertex as u32, 0)
+                    .unwrap();
+            }
+        }
 
         for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
             let relative_position = object_position.camera_relative_f32(camera.position);

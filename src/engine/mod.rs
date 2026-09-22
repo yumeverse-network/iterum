@@ -13,6 +13,8 @@ pub mod fs_utils;
 pub mod shaders;
 pub mod transform;
 
+pub mod planet;
+
 pub mod input;
 pub mod nodes;
 

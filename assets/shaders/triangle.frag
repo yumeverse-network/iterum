@@ -20,27 +20,21 @@ layout(location = 0) out vec4 f_color;
 void main() {
     vec3 normal = normalize(frag_normal);
 
-    vec3 light_direction = light_position - frag_position;
-    float distance = length(light_direction);
+    // Directional: pretend the light is at a fixed direction from the surface.
+    // This ignores light_position and uses a fixed sun direction instead.
+    vec3 light_dir = normalize(vec3(-0.5, 0.5, 1.0));
 
-    light_direction = normalize(light_direction);
-
-    float diffuse = max(dot(normal, light_direction), 0.5);
-
-    const float minimum_illumination = 0.25;
-    float light_range = sqrt(max(light_intensity, 0.0) / minimum_illumination);
-    float range_factor = clamp(1.0 - distance / max(light_range, 0.0001), 0.0, 1.0);
-    range_factor *= range_factor;
-
-    float attenuation = range_factor / max(distance * distance, 0.01);
-
-    vec3 lighting =
-        light_color *
-        diffuse *
-        light_intensity *
-        attenuation;
+    float diffuse = max(dot(normal, light_dir), 0.0);
+    float ambient = 0.15;
 
     vec3 base_color = vec3(1.0, 0.1, 0.6);
 
-    f_color = vec4(base_color * lighting, 1.0);
+    vec3 lighting = light_color * (diffuse * 0.85 + ambient);
+
+    vec3 final_color = base_color * lighting;
+
+    // Reinhard tone map — compress to [0,1] without clipping
+    final_color = final_color / (final_color + vec3(1.0));
+
+    f_color = vec4(final_color, 1.0);
 }

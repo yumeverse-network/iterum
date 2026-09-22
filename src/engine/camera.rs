@@ -2,6 +2,9 @@ use glam::{DVec3, Quat};
 
 use crate::engine::player::Player;
 
+pub const CAM_NEAR: f32 = 0.1;
+pub const CAM_FAR: f32 = 1.0e13;
+
 pub struct Camera {
     pub position: DVec3,
     pub rotation: Quat,
@@ -20,8 +23,8 @@ impl Camera {
             yaw: 0.0,
             pitch: 0.0,
             fov: 80.0,
-            near: 0.01,
-            far: 10000.0,
+            near: CAM_NEAR,
+            far: CAM_FAR,
         }
     }
 
