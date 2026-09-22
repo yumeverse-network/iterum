@@ -209,9 +209,6 @@ fn main() {
         engine.camera.follow(&player);
         engine.update();
 
-        // RENDER THING
-        let (screen_x, screen_y) = renderer.render_player(&player, &engine.camera);
-
         renderer.render(winman.window.as_ref().unwrap(), &mut engine);
 
         /*if player.position != last_pos {
