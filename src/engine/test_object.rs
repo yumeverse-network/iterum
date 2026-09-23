@@ -29,6 +29,69 @@ pub fn spawn(world: &mut World) {
         Mesh::cube()
     ));
 
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.5, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::icosphere(6)
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(5.0, 0.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::plane()
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(0.0, 2.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::triangle()
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.5, 2.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::circle(6, 1.0)
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(5.0, 2.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::cylinder(6, 1.0, 1.0)
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(0.0, 5.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::tube(6, 1.0, 1.0, 0.2)
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.5, 5.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::disc(6, 1.0)
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {

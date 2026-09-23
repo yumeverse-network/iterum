@@ -5,8 +5,8 @@ use glam::{DVec3, Vec3, Quat};
 pub struct Player {
     pub position: DVec3,
     pub velocity: DVec3,
-    pub size: Vec3,
-    pub rotation: Quat,
+    pub _size: Vec3,
+    pub _rotation: Quat,
 }
 
 impl Player {
@@ -14,8 +14,8 @@ impl Player {
         Self {
             position: DVec3::ZERO,
             velocity: DVec3::ZERO,
-            size: Vec3::new(32.0, 32.0, 32.0),
-            rotation: Quat::IDENTITY,
+            _size: Vec3::new(32.0, 32.0, 32.0),
+            _rotation: Quat::IDENTITY,
         }
     }
 

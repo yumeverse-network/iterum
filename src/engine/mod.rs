@@ -5,7 +5,6 @@ pub mod console;
 pub mod emath;
 pub mod fps;
 pub mod mesh;
-pub mod pipeline;
 pub mod player;
 pub mod renderer;
 pub mod window;

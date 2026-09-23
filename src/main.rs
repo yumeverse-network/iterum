@@ -39,7 +39,7 @@ fn main() {
 
     logger.break_line();
 
-    assets.mount_iia("hi.iia");
+    assets._mount_iia("hi.iia");
 
     logger.break_line();
 

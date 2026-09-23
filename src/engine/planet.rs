@@ -12,8 +12,8 @@ pub struct Chunk {
 }
 
 pub struct PlanetChunkMesh {
-    pub center_dir: DVec3,  // for camera-relative translation
-    pub world_size: f64,
+    pub _center_dir: DVec3,  // for camera-relative translation
+    pub _world_size: f64,
     pub vertices: Vec<Vertices>,
 }
 
@@ -136,8 +136,8 @@ pub fn build_chunk_mesh(
     }
 
     PlanetChunkMesh {
-        center_dir: chunk.center_dir,
-        world_size: chunk.world_size,
+        _center_dir: chunk.center_dir,
+        _world_size: chunk.world_size,
         vertices,
     }
 }

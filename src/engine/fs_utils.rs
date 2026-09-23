@@ -9,7 +9,7 @@ pub enum DirType {
     Executables,
 }
 
-pub fn get_dir(dir_type: DirType) -> Option<PathBuf> {
+pub fn _get_dir(dir_type: DirType) -> Option<PathBuf> {
     match dir_type {
         DirType::Home => dirs::home_dir(),
         DirType::Desktop => dirs::desktop_dir(),

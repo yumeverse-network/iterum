@@ -29,7 +29,7 @@ impl FpsCounter {
         }
     }
 
-    pub fn fps(&self) -> f32 {
+    /*pub fn fps(&self) -> f32 {
         self.fps
-    }
+    }*/
 }
