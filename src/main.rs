@@ -151,7 +151,7 @@ fn main() {
         }
 
         // INPUT
-        let mut speed;
+        let speed;
         let mut dx = 0.0;
         let mut dz = 0.0;
         let mut dy = 0.0;

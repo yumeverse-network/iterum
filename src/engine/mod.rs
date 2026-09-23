@@ -24,12 +24,11 @@ use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
 
 pub use crate::engine::camera::Camera;
-pub use asset_manager::AssetManager;
 pub use console::Console;
 
 pub enum FrameLimit {
-    Unlimited,
-    Capped(u32),
+    _Unlimited,
+    _Capped(u32),
 }
 
 pub struct Engine {
@@ -39,8 +38,8 @@ pub struct Engine {
     pub frame_limit: FrameLimit,
     pub delta_time: Duration,
     last_frame: Instant,
-    pub on_update: Option<Box<dyn FnMut()>>,
-    pub on_fixed_update: Option<Box<dyn FnMut()>>,
+    pub _on_update: Option<Box<dyn FnMut()>>,
+    pub _on_fixed_update: Option<Box<dyn FnMut()>>,
     logger: Console,
 }
 
@@ -60,11 +59,11 @@ impl Engine {
             running: true,
             camera,
             world,
-            frame_limit: FrameLimit::Capped(60),
+            frame_limit: FrameLimit::_Capped(60),
             delta_time: Duration::ZERO,
             last_frame: Instant::now(),
-            on_update: None,
-            on_fixed_update: None,
+            _on_update: None,
+            _on_fixed_update: None,
             logger: Console::new(),
         }
     }
@@ -84,13 +83,13 @@ impl Engine {
     }
 
     pub fn update(&mut self) {
-        if let Some(ref mut callback) = self.on_update {
+        if let Some(ref mut callback) = self._on_update {
             callback();
         }
     }
 
-    pub fn fixed_update(&mut self) {
-        if let Some(ref mut callback) = self.on_fixed_update {
+    pub fn _fixed_update(&mut self) {
+        if let Some(ref mut callback) = self._on_fixed_update {
             callback();
         }
     }
@@ -108,11 +107,11 @@ impl Engine {
 
     pub fn limit_fps(&self, frame_start: Instant) {
         match self.frame_limit {
-            FrameLimit::Unlimited => {}
+            FrameLimit::_Unlimited => {}
 
-            FrameLimit::Capped(0) => {}
+            FrameLimit::_Capped(0) => {}
 
-            FrameLimit::Capped(fps) => {
+            FrameLimit::_Capped(fps) => {
                 let target = Duration::from_secs_f64(1.0 / fps as f64);
 
                 while frame_start.elapsed() < target {
