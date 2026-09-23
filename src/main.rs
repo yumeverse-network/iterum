@@ -72,6 +72,10 @@ fn main() {
         .actions
         .bind("mv_down", Action::new(vec![Binding::Key(Key::Q)]));
 
+    input
+        .actions
+        .bind("speedup", Action::new(vec![Binding::Key(Key::Shift)]));
+
     let mut drag_start: Option<[f32; 2]> = None;
 
     while engine.is_running() {
@@ -147,10 +151,16 @@ fn main() {
         }
 
         // INPUT
-        let speed = 1.0e7;
+        let mut speed;
         let mut dx = 0.0;
         let mut dz = 0.0;
         let mut dy = 0.0;
+
+        if input.is_action_pressed("speedup") {
+            speed = 1.0e7;
+        } else {
+            speed = 10.0;
+        }
 
         //let [mx, my] = input.mouse_position();
         let [mdx, mdy] = input.mouse_delta();

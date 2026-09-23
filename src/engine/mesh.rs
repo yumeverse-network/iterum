@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::*;
-use glam::{DVec3, Vec3};
+use glam::DVec3;
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 

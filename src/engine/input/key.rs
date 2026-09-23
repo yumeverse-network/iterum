@@ -61,16 +61,16 @@ impl Key {
             Y => Self::Y,
             Z => Self::Z,
 
-            Num0 => Self::Num0,
-            Num1 => Self::Num1,
-            Num2 => Self::Num2,
-            Num3 => Self::Num3,
-            Num4 => Self::Num4,
-            Num5 => Self::Num5,
-            Num6 => Self::Num6,
-            Num7 => Self::Num7,
-            Num8 => Self::Num8,
-            Num9 => Self::Num9,
+            _0 => Self::Num0,
+            _1 => Self::Num1,
+            _2 => Self::Num2,
+            _3 => Self::Num3,
+            _4 => Self::Num4,
+            _5 => Self::Num5,
+            _6 => Self::Num6,
+            _7 => Self::Num7,
+            _8 => Self::Num8,
+            _9 => Self::Num9,
 
             Escape => Self::Escape,
             Return => Self::Enter,
@@ -83,9 +83,14 @@ impl Key {
             Up => Self::Up,
             Down => Self::Down,
 
-            LShift | RShift => Self::Shift,
-            LCtrl | RCtrl => Self::Ctrl,
-            LAlt | RAlt => Self::Alt,
+            sdl3::keyboard::Scancode::LShift
+            | sdl3::keyboard::Scancode::RShift => Self::Shift,
+            
+            sdl3::keyboard::Scancode::LCtrl
+            | sdl3::keyboard::Scancode::RCtrl => Self::Ctrl,
+            
+            sdl3::keyboard::Scancode::LAlt
+            | sdl3::keyboard::Scancode::RAlt => Self::Alt,
 
             F1 => Self::F1,
             F2 => Self::F2,

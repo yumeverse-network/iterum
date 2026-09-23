@@ -1,5 +1,4 @@
 use bevy_ecs::prelude::*;
-use glam::DVec3;
 
 #[derive(Component)]
 pub struct Planet {
