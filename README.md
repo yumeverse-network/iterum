@@ -23,7 +23,8 @@ Please see `LICENSE` for more detail.
 - [ ] Undo / Redo
 - [ ] Scene Saving (and loading)
 - [ ] Material Editor (shader tweaking etc. for runtime and editor)
-- [ ] Basic Object Shapes (collision on by default)
+- [ ] Basic Object Shapes
+- [ ] Basic Object Collision (default on)
 - [ ] Asset Previews (Considering)
 - [ ] Console Log
 - [ ] Multiplayer Editing (Considering)
