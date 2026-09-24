@@ -17,7 +17,7 @@ pub mod planet;
 pub mod input;
 pub mod nodes;
 
-pub mod test_object;
+pub mod test_scene;
 
 use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
@@ -52,7 +52,7 @@ impl Engine {
         let mut world = World::new();
 
         // Temporary test object for lighting.
-        test_object::spawn(&mut world);
+        test_scene::spawn(&mut world);
 
         Engine {
             running: true,
