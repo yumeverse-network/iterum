@@ -515,11 +515,9 @@ impl Mesh {
                 normal: normal.as_vec3().to_array(),
             }
         };
-    
-        let h = depth * 0.5;
-    
-        let front = DVec3::new(0.0, 0.0,  h);
-        let back  = DVec3::new(0.0, 0.0, -h);
+        
+        let front = DVec3::new(0.0, 0.0, depth);
+        let back  = DVec3::new(0.0, 0.0, -depth);
     
         let a = DVec3::new(-1.0, -1.0, 0.0);
         let b = DVec3::new( 1.0, -1.0, 0.0);
@@ -565,5 +563,47 @@ impl Mesh {
         verts.push(v(cf, DVec3::new(-2.0, -1.0, 0.0).normalize()));
     
         Self { vertices: verts }
+    }
+
+    // Pyramid
+    pub fn pyramid() -> Self {
+        fn v(position: DVec3, normal: DVec3) -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        }
+
+        Self {
+            vertices: vec![
+                // Front
+                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::Z),
+                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::Z),
+                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::Z),
+
+                // Back
+                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Z),
+                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Z),
+                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::NEG_Z),
+
+                // Left
+                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
+                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_X),
+                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::NEG_X),
+
+                // Right
+                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::X),
+                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::X),
+                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::X),
+
+                // Bottom
+                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Y),
+                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
+                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
+                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_Y),
+            ],
+        }
     }
 }
