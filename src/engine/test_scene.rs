@@ -158,4 +158,13 @@ pub fn spawn(world: &mut World) {
             intensity: 1.0e22,
         }
     ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(0.0, -2.5, 0.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::new(100.0, 1.0, 100.0),
+        },
+        Mesh::cube()
+    ));
 }

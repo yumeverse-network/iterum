@@ -88,6 +88,9 @@ struct SceneUniform {
 
     light_color: [f32; 3],
     light_intensity: f32,
+
+    camera_position: [f32; 3],
+    _padding2: f32,
 }
 
 impl Renderer {
@@ -778,6 +781,12 @@ impl Renderer {
                     _padding1: 0.0,
                     light_color: light_color.to_array(),
                     light_intensity,
+                    camera_position: [
+                        camera.position.x as f32,
+                        camera.position.y as f32,
+                        camera.position.z as f32,
+                    ],
+                    _padding2: 0.0,
                 },
             )
             .unwrap();
@@ -839,6 +848,12 @@ impl Renderer {
                     _padding1: 0.0,
                     light_color: light_color.to_array(),
                     light_intensity,
+                    camera_position: [
+                        camera.position.x as f32,
+                        camera.position.y as f32,
+                        camera.position.z as f32,
+                    ],
+                    _padding2: 0.0,
                 },
             )
             .unwrap();

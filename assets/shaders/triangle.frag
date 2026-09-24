@@ -13,9 +13,13 @@ layout(std140, set = 0, binding = 0) uniform Scene {
 
     vec3 light_color;
     float light_intensity;
+
+    vec3 camera_position;
+    float _padding2;
 };
 
 layout(location = 0) out vec4 f_color;
+layout(depth_any) out float gl_FragDepth;
 
 void main() {
     vec3 normal = normalize(frag_normal);
@@ -35,6 +39,11 @@ void main() {
 
     // Reinhard tone map — compress to [0,1] without clipping
     final_color = final_color / (final_color + vec3(1.0));
+
+    const float FAR = 1.0e13;
+    const float Fcoef = 1.0 / log2(FAR + 1.0);
+    float dist = length(frag_position - camera_position);
+    gl_FragDepth = log2(max(1e-6, 1.0 + dist)) * Fcoef;
 
     f_color = vec4(final_color, 1.0);
 }
