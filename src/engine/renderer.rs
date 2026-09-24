@@ -2,24 +2,46 @@
 use crate::engine::nodes::light::PointLight;
 use crate::engine::nodes::planet::Planet;
 use crate::engine::planet;
-use glam::{Mat4, Vec3, DVec3};
+use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
 use std::sync::Arc;
 use vulkano::{
-    VulkanLibrary, buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer}, command_buffer::{
+    VulkanLibrary,
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, RenderPassBeginInfo,
         SubpassBeginInfo, SubpassContents, SubpassEndInfo,
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-    }, descriptor_set::{
+    },
+    descriptor_set::{
         DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
-    }, device::{
+    },
+    device::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
-    }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
-            GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::RasterizationState, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
-        }, layout::PipelineDescriptorSetLayoutCreateInfo,
-    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
+    },
+    format::Format,
+    image::{Image, ImageUsage, SampleCount, view::ImageView},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
+        graphics::{
+            GraphicsPipelineCreateInfo,
+            color_blend::ColorBlendState,
+            depth_stencil::DepthState,
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            vertex_input::{Vertex, VertexDefinition},
+            viewport::{Viewport, ViewportState},
+        },
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+    swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
+    sync::{self, GpuFuture},
 };
 
 use crate::engine::Engine;
@@ -29,7 +51,7 @@ use crate::engine::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
 // Max vertices push per frame. Allocated once, overwritten every frame.
-const MAX_VERTICES: u64 = 8_000_000;
+const MAX_VERTICES: u64 = 16_000_000;
 
 pub struct Renderer {
     device: Option<Arc<Device>>,
@@ -94,7 +116,7 @@ impl Renderer {
             self.pending_msaa_samples = Some(samples);
         }
     }*/
-    
+
     /*pub fn set_msaa_enabled(&mut self, enabled: bool) {
         self.set_msaa_samples(if enabled {
             SampleCount::Sample1
@@ -378,10 +400,12 @@ impl Renderer {
         });
         pipeline_info.multisample_state = Some(MultisampleState::default());
 
-        pipeline_info.depth_stencil_state = Some(vulkano::pipeline::graphics::depth_stencil::DepthStencilState {
-            depth: Some(DepthState::simple()),
-            ..Default::default()
-        });
+        pipeline_info.depth_stencil_state = Some(
+            vulkano::pipeline::graphics::depth_stencil::DepthStencilState {
+                depth: Some(DepthState::simple()),
+                ..Default::default()
+            },
+        );
 
         pipeline_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
             1,
@@ -411,7 +435,7 @@ impl Renderer {
             .iter()
             .map(|image| ImageView::new_default(image.clone()).unwrap())
             .collect::<Vec<_>>();
-        
+
         let depth_views = images
             .iter()
             .map(|_| {
@@ -438,10 +462,7 @@ impl Renderer {
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![
-                            swapchain_view.clone(),
-                            depth_view.clone(),
-                        ],
+                        attachments: vec![swapchain_view.clone(), depth_view.clone()],
                         ..Default::default()
                     },
                 )
@@ -554,7 +575,7 @@ impl Renderer {
             Vec3::Y,
         );*/
         let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
-        
+
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
@@ -594,9 +615,9 @@ impl Renderer {
         self.elapsed += dt;
 
         let mut vertices = Vec::new();
-        let mut objects = Vec::new();          // (start, count, position, rotation, scale)
-        let mut planet_objects: Vec<(usize, usize, DVec3)> = Vec::new();   // (start, count, planet_pos)
-        
+        let mut objects = Vec::new(); // (start, count, position, rotation, scale)
+        let mut planet_objects: Vec<(usize, usize, DVec3)> = Vec::new(); // (start, count, planet_pos)
+
         // --- existing meshes ---
         for (transform, mesh) in engine
             .world
@@ -613,10 +634,10 @@ impl Renderer {
                 transform.scale,
             ));
         }
-        
+
         // Planets (auto chunking)
         let screen_h = dimensions[1] as f64;
-        
+
         for (transform, planet) in engine
             .world
             .query::<(&Transform, &Planet)>()
@@ -650,11 +671,11 @@ impl Renderer {
                 planet_objects.push((planet_start, planet_count, transform.position));
             }
         }
-        
+
         if vertices.is_empty() {
             return;
         }
-        
+
         if vertices.len() as u64 > MAX_VERTICES {
             eprintln!(
                 "Vertex buffer overflow: {} > {}",

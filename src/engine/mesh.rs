@@ -463,4 +463,45 @@ impl Mesh {
             vertices: verts,
         }
     }
+
+    // Cone
+    pub fn cone(segments: i32, radius: f64) -> Self {
+        let mut verts = Vec::new();
+    
+        fn v(position: DVec3, normal: DVec3) -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        }
+    
+        let apex = DVec3::new(0.0, 1.0, 0.0);
+        let base_center = DVec3::new(0.0, -1.0, 0.0);
+        let h = 2.0;
+        let down = -DVec3::Y;
+    
+        for i in 0..segments {
+            let theta0 = 2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+    
+            let dir0 = DVec3::new(theta0.cos(), 0.0, theta0.sin());
+            let dir1 = DVec3::new(theta1.cos(), 0.0, theta1.sin());
+    
+            let p0 = DVec3::new(radius * dir0.x, -1.0, radius * dir0.z);
+            let p1 = DVec3::new(radius * dir1.x, -1.0, radius * dir1.z);
+    
+            let n0 = (DVec3::Y * radius + dir0 * h).normalize();
+            let n1 = (DVec3::Y * radius + dir1 * h).normalize();
+    
+            verts.push(v(apex, n0));
+            verts.push(v(p0, n0));
+            verts.push(v(p1, n1));
+    
+            verts.push(v(base_center, down));
+            verts.push(v(p1, down));
+            verts.push(v(p0, down));
+        }
+    
+        Self { vertices: verts }
+    }
 }
