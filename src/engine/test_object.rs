@@ -139,11 +139,11 @@ pub fn spawn(world: &mut World) {
 
     world.spawn((
         Transform {
-            position: DVec3::new(-5.0, 1.0, -10.0),
+            position: DVec3::new(-2.5, 1.0, -10.0),
             rotation: Quat::IDENTITY,
-            scale: Vec3::new(1.0, 2.0, 1.0),
+            scale: Vec3::ONE,
         },
-        Mesh::cube()
+        Mesh::capsule(6, 6, 1.0, 2.0)
     ));
 
     // Spawn point light

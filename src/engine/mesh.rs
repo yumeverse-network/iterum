@@ -718,9 +718,9 @@ impl Mesh {
             let center = DVec3::new(0.0, 0.0, 0.0);
             let down = DVec3::new(0.0, -1.0, 0.0);
             
-            for i in 0..segments {
-                let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
-                let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            for j in 0..segments {
+                let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
+                let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
             
                 let p0 = DVec3::new(radius * theta0.cos(),  -0.5, radius * theta0.sin());
                 let p1 = DVec3::new(radius * theta1.cos(),  -0.5, radius * theta1.sin());
@@ -728,6 +728,122 @@ impl Mesh {
                 verts.push(v(center, down));
                 verts.push(v(p1, down));
                 verts.push(v(p0, down));
+            }
+        }
+    
+        Self { vertices: verts }
+    }
+
+    // Capsule
+    pub fn capsule(segments: i32, rings: i32, radius: f64, height: f64) -> Self {
+        let mut verts = Vec::new();
+    
+        fn v(position: DVec3, normal: DVec3) -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        }
+
+        let half_height = height / 2.0;
+    
+        for i in 0..rings {
+            let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64; // Up
+            let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64; // Up
+            let phi2 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0) * i as f64 / rings as f64;
+            let phi3 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0)  * (i + 1) as f64 / rings as f64;
+    
+            for j in 0..segments {
+                let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
+                let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
+
+                // Normals bottom
+                let n_b0 = DVec3::new(phi2.sin() * theta0.cos(), phi2.cos(), phi2.sin() * theta0.sin());
+                let n_b1 = DVec3::new(phi2.sin() * theta1.cos(), phi2.cos(), phi2.sin() * theta1.sin());
+                let n_b2 = DVec3::new(phi3.sin() * theta0.cos(), phi3.cos(), phi3.sin() * theta0.sin());
+                let n_b3 = DVec3::new(phi3.sin() * theta1.cos(), phi3.cos(), phi3.sin() * theta1.sin());
+
+                // Normals top
+                let n_t0 = DVec3::new(phi0.sin() * theta0.cos(), phi0.cos(), phi0.sin() * theta0.sin());
+                let n_t1 = DVec3::new(phi0.sin() * theta1.cos(), phi0.cos(), phi0.sin() * theta1.sin());
+                let n_t2 = DVec3::new(phi1.sin() * theta0.cos(), phi1.cos(), phi1.sin() * theta0.sin());
+                let n_t3 = DVec3::new(phi1.sin() * theta1.cos(), phi1.cos(), phi1.sin() * theta1.sin());
+    
+                let b0 = DVec3::new(
+                    radius * phi2.sin() * theta0.cos(),
+                    radius * phi2.cos() - half_height,
+                    radius * phi2.sin() * theta0.sin(),
+                );
+                let b1 = DVec3::new(
+                    radius * phi2.sin() * theta1.cos(),
+                    radius * phi2.cos() - half_height,
+                    radius * phi2.sin() * theta1.sin(),
+                );
+                let b2 = DVec3::new(
+                    radius * phi3.sin() * theta0.cos(),
+                    radius * phi3.cos() - half_height,
+                    radius * phi3.sin() * theta0.sin(),
+                );
+                let b3 = DVec3::new(
+                    radius * phi3.sin() * theta1.cos(),
+                    radius * phi3.cos() - half_height,
+                    radius * phi3.sin() * theta1.sin(),
+                );
+
+                let t0 = DVec3::new(
+                    radius * phi0.sin() * theta0.cos(),
+                    radius * phi0.cos() + half_height,
+                    radius * phi0.sin() * theta0.sin(),
+                );
+                let t1 = DVec3::new(
+                    radius * phi0.sin() * theta1.cos(),
+                    radius * phi0.cos() + half_height,
+                    radius * phi0.sin() * theta1.sin(),
+                );
+                let t2 = DVec3::new(
+                    radius * phi1.sin() * theta0.cos(),
+                    radius * phi1.cos() + half_height,
+                    radius * phi1.sin() * theta0.sin(),
+                );
+                let t3 = DVec3::new(
+                    radius * phi1.sin() * theta1.cos(),
+                    radius * phi1.cos() + half_height,
+                    radius * phi1.sin() * theta1.sin(),
+                );
+
+                // Bottom
+                verts.push(v(b0, n_b0));
+                verts.push(v(b1, n_b1));
+                verts.push(v(b2, n_b2));
+    
+                verts.push(v(b1, n_b1));
+                verts.push(v(b2, n_b2));
+                verts.push(v(b3, n_b3));
+
+                // Top
+                verts.push(v(t0, n_t0));
+                verts.push(v(t2, n_t2));
+                verts.push(v(t1, n_t1));
+    
+                verts.push(v(t1, n_t1));
+                verts.push(v(t2, n_t2));
+                verts.push(v(t3, n_t3));
+
+                let s0 = DVec3::new(radius * theta0.cos(), -half_height, radius * theta0.sin());
+                let s1 = DVec3::new(radius * theta1.cos(), -half_height, radius * theta1.sin());
+                let s2 = DVec3::new(radius * theta0.cos(),  half_height, radius * theta0.sin());
+                let s3 = DVec3::new(radius * theta1.cos(),  half_height, radius * theta1.sin());
+                
+                let n0 = DVec3::new(theta0.cos(), 0.0, theta0.sin());
+                let n1 = DVec3::new(theta1.cos(), 0.0, theta1.sin());
+                
+                verts.push(v(s0, n0));
+                verts.push(v(s2, n0));
+                verts.push(v(s1, n1));
+                
+                verts.push(v(s1, n1));
+                verts.push(v(s2, n0));
+                verts.push(v(s3, n1));
             }
         }
     
