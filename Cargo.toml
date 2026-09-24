@@ -43,3 +43,4 @@ smallvec = "1.16.1" # Small vecs I guess
 netcorehost = "0.22.0" # C# scripting
 egui = "0.36.2" # UI
 egui_winit_vulkano = "0.28.0" # UI in Vulkano
+symbolica = "3.0.0" # Math library
