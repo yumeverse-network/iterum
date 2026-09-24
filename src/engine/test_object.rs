@@ -130,6 +130,15 @@ pub fn spawn(world: &mut World) {
 
     world.spawn((
         Transform {
+            position: DVec3::new(0.0, 10.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::hemisphere(6, 6, 1.0)
+    ));
+
+    world.spawn((
+        Transform {
             position: DVec3::new(-5.0, 1.0, -10.0),
             rotation: Quat::IDENTITY,
             scale: Vec3::new(1.0, 2.0, 1.0),

@@ -665,4 +665,72 @@ impl Mesh {
             vertices: verts,
         }
     }
+
+    // Hemisphere
+    pub fn hemisphere(segments: i32, rings: i32, radius: f64) -> Self {
+        let mut verts = Vec::new();
+    
+        fn v(position: DVec3, normal: DVec3) -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        }
+    
+        for i in 0..rings {
+            let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64;
+            let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64;
+    
+            for i in 0..segments {
+                let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+                let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+    
+                let p0 = DVec3::new(
+                    radius * phi0.sin() * theta0.cos(),
+                    radius * phi0.cos() - 0.5,
+                    radius * phi0.sin() * theta0.sin(),
+                );
+                let p1 = DVec3::new(
+                    radius * phi0.sin() * theta1.cos(),
+                    radius * phi0.cos() - 0.5,
+                    radius * phi0.sin() * theta1.sin(),
+                );
+                let p2 = DVec3::new(
+                    radius * phi1.sin() * theta0.cos(),
+                    radius * phi1.cos() - 0.5,
+                    radius * phi1.sin() * theta0.sin(),
+                );
+                let p3 = DVec3::new(
+                    radius * phi1.sin() * theta1.cos(),
+                    radius * phi1.cos() - 0.5,
+                    radius * phi1.sin() * theta1.sin(),
+                );
+    
+                verts.push(v(p0, p0.normalize()));
+                verts.push(v(p2, p2.normalize()));
+                verts.push(v(p1, p1.normalize()));
+    
+                verts.push(v(p1, p1.normalize()));
+                verts.push(v(p2, p2.normalize()));
+                verts.push(v(p3, p3.normalize()));
+            }
+
+            let center = DVec3::new(0.0, 0.0, 0.0);
+            let down = DVec3::new(0.0, -1.0, 0.0);
+            
+            for i in 0..segments {
+                let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+                let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            
+                let p0 = DVec3::new(radius * theta0.cos(),  -0.5, radius * theta0.sin());
+                let p1 = DVec3::new(radius * theta1.cos(),  -0.5, radius * theta1.sin());
+                
+                verts.push(v(center, down));
+                verts.push(v(p1, down));
+                verts.push(v(p0, down));
+            }
+        }
+    
+        Self { vertices: verts }
+    }
 }
