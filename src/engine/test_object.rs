@@ -119,6 +119,24 @@ pub fn spawn(world: &mut World) {
         Mesh::pyramid()
     ));
 
+    world.spawn((
+        Transform {
+            position: DVec3::new(5.0, 7.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::uv_sphere(6, 6, 1.0)
+    ));
+
+    world.spawn((
+        Transform {
+            position: DVec3::new(-5.0, 1.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::new(1.0, 2.0, 1.0),
+        },
+        Mesh::cube()
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {

@@ -2,6 +2,7 @@ use bevy_ecs::prelude::*;
 use glam::DVec3;
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
+use MathUtils;
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
@@ -245,9 +246,9 @@ impl Mesh {
 
         for i in 0..segments {
             let theta0 =
-                2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+                2.0 * MathUtils::PI * i as f64 / segments as f64;
             let theta1 =
-                2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
             let p0 = DVec3::new(
                 radius * theta0.cos(),
@@ -286,9 +287,9 @@ impl Mesh {
 
         for i in 0..segments {
             let theta0 =
-                2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+                2.0 * MathUtils::PI * i as f64 / segments as f64;
             let theta1 =
-                2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
             let p0 = DVec3::new(
                 radius * theta0.cos(),
@@ -346,9 +347,9 @@ impl Mesh {
 
         for i in 0..segments {
             let theta0 =
-                2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+                2.0 * MathUtils::PI * i as f64 / segments as f64;
             let theta1 =
-                2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
             let p0 = DVec3::new(
                 radius * theta0.cos(),
@@ -438,9 +439,9 @@ impl Mesh {
 
         for i in 0..segments {
             let theta0 =
-                2.0 * std::f64::consts::PI * i as f64 / segments as f64;
+                2.0 * MathUtils::PI * i as f64 / segments as f64;
             let theta1 =
-                2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
             let p0 = DVec3::new(
                 radius * theta0.cos(),
@@ -481,8 +482,8 @@ impl Mesh {
         let down = -DVec3::Y;
     
         for i in 0..segments {
-            let theta0 = 2.0 * std::f64::consts::PI * i as f64 / segments as f64;
-            let theta1 = 2.0 * std::f64::consts::PI * (i + 1) as f64 / segments as f64;
+            let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
     
             let dir0 = DVec3::new(theta0.cos(), 0.0, theta0.sin());
             let dir1 = DVec3::new(theta1.cos(), 0.0, theta1.sin());
@@ -604,6 +605,70 @@ impl Mesh {
                 v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
                 v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_Y),
             ],
+        }
+    }
+
+    // UV Sphere
+    pub fn uv_sphere(segments: i32, rings: i32, radius: f64) -> Self {
+        let mut verts = Vec::new();
+
+        fn v(position: DVec3, normal: DVec3) -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        }
+
+        for i in 0..rings {
+            let phi0 = MathUtils::PI * i as f64 / rings as f64;
+            let phi1 = MathUtils::PI * (i + 1) as f64 / rings as f64;
+
+            for i in 0..segments {
+                let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+                let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+
+                let p0 = DVec3::new(
+                    radius * phi0.sin() * theta0.cos(),
+                    radius * phi0.cos(),
+                    radius * phi0.sin() * theta0.sin(),
+                );
+                
+                let p1 = DVec3::new(
+                    radius * phi0.sin() * theta1.cos(),
+                    radius * phi0.cos(),
+                    radius * phi0.sin() * theta1.sin(),
+                );
+    
+                let p2 = DVec3::new(
+                    radius * phi1.sin() * theta0.cos(),
+                    radius * phi1.cos(),
+                    radius * phi1.sin() * theta0.sin(),
+                );
+    
+                let p3 = DVec3::new(
+                    radius * phi1.sin() * theta1.cos(),
+                    radius * phi1.cos(),
+                    radius * phi1.sin() * theta1.sin(),
+                );
+
+                let pos = DVec3::new(
+                    radius * phi0.sin() * theta0.cos(),
+                    radius * phi0.cos(),
+                    radius * phi0.sin() * theta0.sin()
+                );
+
+                verts.push(v(p0, p0.normalize()));
+                verts.push(v(p2, p2.normalize()));
+                verts.push(v(p1, p1.normalize()));
+
+                verts.push(v(p1, p1.normalize()));
+                verts.push(v(p2, p2.normalize()));
+                verts.push(v(p3, p3.normalize()));
+            }
+        }
+
+        Self {
+            vertices: verts,
         }
     }
 }
