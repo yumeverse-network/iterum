@@ -651,12 +651,6 @@ impl Mesh {
                     radius * phi1.sin() * theta1.sin(),
                 );
 
-                let pos = DVec3::new(
-                    radius * phi0.sin() * theta0.cos(),
-                    radius * phi0.cos(),
-                    radius * phi0.sin() * theta0.sin()
-                );
-
                 verts.push(v(p0, p0.normalize()));
                 verts.push(v(p2, p2.normalize()));
                 verts.push(v(p1, p1.normalize()));
