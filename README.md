@@ -142,7 +142,8 @@ cargo install --path .
 
 Contributions are always welcome!
 
-There is currently no contributing guide. Please open an issue or pull request if you'd like to contribute.
+There is currently no contributing guide.
+Please open an issue or pull request if you'd like to contribute.
 
 ## Authors
 
