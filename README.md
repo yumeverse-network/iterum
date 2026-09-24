@@ -124,11 +124,11 @@ Please see `LICENSE` for more detail.
 
 ### Platforms
 
-- [ ] Windows x86_64
+- [ ] Windows x86_64 (Not Tested)
 - [ ] Windows Arm64 (Considering)
-- [ ] Linux x86_64
-- [ ] Linux Arm64
-- [ ] macOS - MoltenVK or native
+- [X] Linux x86_64 (Active Testing)
+- [ ] Linux Arm64 (Not Tested)
+- [X] macOS - MoltenVK (Active Testing)
 
 ## Installation
 
