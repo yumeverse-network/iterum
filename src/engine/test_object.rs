@@ -101,6 +101,15 @@ pub fn spawn(world: &mut World) {
         Mesh::cone(6, 1.0)
     ));
 
+    world.spawn((
+        Transform {
+            position: DVec3::new(0.0, 7.5, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        Mesh::prism(1.0)
+    ));
+
     // Spawn point light
     world.spawn((
         Transform {

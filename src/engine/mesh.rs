@@ -504,4 +504,66 @@ impl Mesh {
     
         Self { vertices: verts }
     }
+
+    // Triangular prism
+    pub fn prism(depth: f64) -> Self {
+        let mut verts = Vec::new();
+    
+        let v = |position: DVec3, normal: DVec3| -> Vertices {
+            Vertices {
+                position: position.as_vec3().to_array(),
+                normal: normal.as_vec3().to_array(),
+            }
+        };
+    
+        let h = depth * 0.5;
+    
+        let front = DVec3::new(0.0, 0.0,  h);
+        let back  = DVec3::new(0.0, 0.0, -h);
+    
+        let a = DVec3::new(-1.0, -1.0, 0.0);
+        let b = DVec3::new( 1.0, -1.0, 0.0);
+        let c = DVec3::new( 0.0,  1.0, 0.0);
+    
+        let af = a + front;
+        let bf = b + front;
+        let cf = c + front;
+    
+        let ab = a + back;
+        let bb = b + back;
+        let cb = c + back;
+    
+        // front
+        verts.push(v(af, DVec3::Z));
+        verts.push(v(bf, DVec3::Z));
+        verts.push(v(cf, DVec3::Z));
+    
+        // back
+        verts.push(v(ab, DVec3::NEG_Z));
+        verts.push(v(cb, DVec3::NEG_Z));
+        verts.push(v(bb, DVec3::NEG_Z));
+    
+        verts.push(v(ab, DVec3::NEG_Y));
+        verts.push(v(bb, DVec3::NEG_Y));
+        verts.push(v(bf, DVec3::NEG_Y));
+        verts.push(v(ab, DVec3::NEG_Y));
+        verts.push(v(bf, DVec3::NEG_Y));
+        verts.push(v(af, DVec3::NEG_Y));
+    
+        verts.push(v(bb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+        verts.push(v(cb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+        verts.push(v(cf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+        verts.push(v(bb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+        verts.push(v(cf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+        verts.push(v(bf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
+    
+        verts.push(v(cb, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+        verts.push(v(ab, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+        verts.push(v(af, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+        verts.push(v(cb, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+        verts.push(v(af, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+        verts.push(v(cf, DVec3::new(-2.0, -1.0, 0.0).normalize()));
+    
+        Self { vertices: verts }
+    }
 }
