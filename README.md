@@ -126,9 +126,9 @@ Please see `LICENSE` for more detail.
 
 - [ ] Windows x86_64 (Not Tested)
 - [ ] Windows Arm64 (Considering)
-- [X] Linux x86_64 (Active Testing)
+- [X] Linux x86_64
 - [ ] Linux Arm64 (Not Tested)
-- [X] macOS - MoltenVK (Active Testing)
+- [X] macOS - MoltenVK
 
 ## Installation
 
