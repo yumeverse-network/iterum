@@ -24,8 +24,6 @@ layout(depth_any) out float gl_FragDepth;
 void main() {
     vec3 normal = normalize(frag_normal);
 
-    // Directional: pretend the light is at a fixed direction from the surface.
-    // This ignores light_position and uses a fixed sun direction instead.
     vec3 light_dir = normalize(vec3(-0.5, 0.5, 1.0));
 
     float diffuse = max(dot(normal, light_dir), 0.0);

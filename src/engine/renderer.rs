@@ -764,11 +764,7 @@ impl Renderer {
                     _padding1: 0.0,
                     light_color: light_color.to_array(),
                     light_intensity,
-                    camera_position: [
-                        camera.position.x as f32,
-                        camera.position.y as f32,
-                        camera.position.z as f32,
-                    ],
+                    camera_position: [0.0, 0.0, 0.0],
                     _padding2: 0.0,
                 },
             )
@@ -831,11 +827,7 @@ impl Renderer {
                     _padding1: 0.0,
                     light_color: light_color.to_array(),
                     light_intensity,
-                    camera_position: [
-                        camera.position.x as f32,
-                        camera.position.y as f32,
-                        camera.position.z as f32,
-                    ],
+                    camera_position: [0.0, 0.0, 0.0],
                     _padding2: 0.0,
                 },
             )
