@@ -51,7 +51,7 @@ impl Engine {
 
         let mut world = World::new();
 
-        // Temporary test object for lighting.
+        // Temporary test objects for lighting.
         test_scene::spawn(&mut world);
 
         Engine {

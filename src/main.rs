@@ -80,6 +80,7 @@ fn main() {
 
     while engine.is_running() {
         let frame_start = Instant::now();
+        
         input.begin_frame();
 
         // WINDOW / INPUT EVENTS

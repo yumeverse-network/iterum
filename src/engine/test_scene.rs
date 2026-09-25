@@ -20,6 +20,7 @@ pub fn spawn(world: &mut World) {
         },
     ));
 
+    // Cube with ID so it can be modified
     world.spawn((
         Transform {
             position: DVec3::new(0.0, 0.0, -10.0),
@@ -155,7 +156,7 @@ pub fn spawn(world: &mut World) {
         },
         PointLight {
             color: Vec3::ONE,
-            intensity: 1.0e22,
+            intensity: 1.0,
         }
     ));
 
