@@ -18,8 +18,8 @@ use vulkano::{
     }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
             GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::{CullMode, FrontFace, RasterizationState}, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
-        }, layout::PipelineDescriptorSetLayoutCreateInfo,
-    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
+        }, layout::{self, PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
+    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, shader::ShaderStages, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
 };
 
 use crate::engine::Engine;
@@ -47,17 +47,19 @@ pub struct Renderer {
     recreate_swapchain: bool,
     msaa_samples: SampleCount,
     pending_msaa_samples: Option<SampleCount>,
+    descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
 }
 
-/*
-use crate::engine::camera::Camera;
-use crate::engine::player::Player;
-*/
+#[derive(BufferContents, Copy, Clone)]
+#[repr(C)]
+struct ModelPush {
+    model: [[f32; 4]; 4],
+}
 
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
 struct SceneUniform {
-    model: [[f32; 4]; 4],
+    //model: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
     projection: [[f32; 4]; 4],
 
@@ -89,6 +91,7 @@ impl Renderer {
             recreate_swapchain: false,
             msaa_samples: SampleCount::Sample1,
             pending_msaa_samples: None,
+            descriptor_set_allocator: None,
         }
     }
 
@@ -357,13 +360,25 @@ impl Renderer {
 
         let stages = [vertex_stage, fragment_stage];
 
-        let layout = PipelineLayout::new(
+        /*let layout = PipelineLayout::new(
             device.clone(),
             PipelineDescriptorSetLayoutCreateInfo::from_stages(stages.iter())
                 .into_pipeline_layout_create_info(device.clone())
                 .unwrap(),
         )
-        .unwrap();
+        .unwrap();*/
+
+        let mut layout_info = PipelineDescriptorSetLayoutCreateInfo::from_stages(stages.iter())
+            .into_pipeline_layout_create_info(device.clone())
+            .unwrap();
+
+        layout_info.push_constant_ranges = vec![PushConstantRange {
+            stages: ShaderStages::VERTEX,
+            offset: 0,
+            size: 64,
+        }];
+
+        let layout = PipelineLayout::new(device.clone(), layout_info).unwrap();
 
         let mut pipeline_info = GraphicsPipelineCreateInfo::layout(layout);
 
@@ -459,6 +474,11 @@ impl Renderer {
         logger.log_system(format_args!("Swapchain images: {}", images.len()));
         logger.break_line();
 
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
+
         self.instance = Some(instance);
         self.device = Some(device);
         self.queue = Some(queue);
@@ -470,6 +490,7 @@ impl Renderer {
         self.command_buffer_allocator = Some(command_buffer_allocator);
         self.graphics_pipeline = Some(graphics_pipeline);
         self.vertex_buffer = Some(vertex_buffer);
+        self.descriptor_set_allocator = Some(descriptor_set_allocator);
     }
 
     pub fn render(&mut self, window: &sdl3::video::Window, engine: &mut Engine) {
@@ -736,7 +757,82 @@ impl Renderer {
             .bind_vertex_buffers(0, draw_buffer)
             .unwrap();
 
+        let scene_buffer = Buffer::from_data(
+            self.memory_allocator.as_ref().unwrap().clone(),
+            BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            SceneUniform {
+                view: view.to_cols_array_2d(),
+                projection: projection.to_cols_array_2d(),
+                light_position: [
+                    relative_light_position.x as f32,
+                    relative_light_position.y as f32,
+                    relative_light_position.z as f32,
+                ],
+                _padding1: 0.0,
+                light_color: light_color.to_array(),
+                light_intensity,
+                camera_position: [0.0, 0.0, 0.0],
+                _padding2: 0.0,
+            },
+        ).unwrap();
+
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.as_ref().unwrap().clone(),
+            graphics_pipeline.layout().set_layouts()[0].clone(),
+            [WriteDescriptorSet::buffer(0, scene_buffer)],
+            [],
+        ).unwrap();
+
+        builder
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                graphics_pipeline.layout().clone(),
+                0,
+                descriptor_set,
+            ).unwrap();
+
         for (start_vertex, vertex_count, planet_position) in &planet_objects {
+            let relative_position = planet_position.camera_relative_f32(camera.position);
+            let model = Mat4::from_translation(relative_position);
+        
+            unsafe {
+                builder
+                    .push_constants(
+                        graphics_pipeline.layout().clone(),
+                        0,
+                        ModelPush { model: model.to_cols_array_2d() },
+                    )
+                    .unwrap();
+                builder
+                    .draw(*vertex_count as u32, 1, *start_vertex as u32, 0)
+                    .unwrap();
+            }
+        }
+        
+        for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
+            let relative_position = object_position.camera_relative_f32(camera.position);
+            let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
+        
+            unsafe {
+                builder
+                    .push_constants(
+                        graphics_pipeline.layout().clone(),
+                        0,
+                        ModelPush { model: model.to_cols_array_2d() },
+                    )
+                    .unwrap();
+                builder
+                    .draw(vertex_count as u32, 1, start_vertex as u32, 0)
+                    .unwrap();
+            }
+        }
+
+        /*for (start_vertex, vertex_count, planet_position) in &planet_objects {
             let relative_position = planet_position.camera_relative_f32(camera.position);
 
             let model = Mat4::from_translation(relative_position);
@@ -753,7 +849,7 @@ impl Renderer {
                     ..Default::default()
                 },
                 SceneUniform {
-                    model: model.to_cols_array_2d(),
+                    //model: model.to_cols_array_2d(),
                     view: view.to_cols_array_2d(),
                     projection: projection.to_cols_array_2d(),
                     light_position: [
@@ -797,9 +893,9 @@ impl Renderer {
                     .draw(*vertex_count as u32, 1, *start_vertex as u32, 0)
                     .unwrap();
             }
-        }
+        }*/
 
-        for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
+        /*for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
             let relative_position = object_position.camera_relative_f32(camera.position);
 
             let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
@@ -816,7 +912,7 @@ impl Renderer {
                     ..Default::default()
                 },
                 SceneUniform {
-                    model: model.to_cols_array_2d(),
+                    //model: model.to_cols_array_2d(),
                     view: view.to_cols_array_2d(),
                     projection: projection.to_cols_array_2d(),
                     light_position: [
@@ -860,7 +956,7 @@ impl Renderer {
                     .draw(vertex_count as u32, 1, start_vertex as u32, 0)
                     .unwrap();
             }
-        }
+        }*/
 
         builder.end_render_pass(SubpassEndInfo::default()).unwrap();
 

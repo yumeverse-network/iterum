@@ -4,7 +4,7 @@ layout(location = 0) in vec3 frag_normal;
 layout(location = 1) in vec3 frag_position;
 
 layout(std140, set = 0, binding = 0) uniform Scene {
-    mat4 model;
+    //mat4 model;
     mat4 view;
     mat4 projection;
 
