@@ -29,7 +29,8 @@ void main() {
 
     frag_position = world_position.xyz;
     //frag_normal = mat3(model) * normal;
-    frag_normal = normalize(transpose(inverse(mat3(model))) * normal);
+    //frag_normal = normalize(transpose(inverse(mat3(model))) * normal);
+    frag_normal = normalize(mat3(model) * normal);
 
     vec4 clip = projection * view * world_position;
 

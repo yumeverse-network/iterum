@@ -460,8 +460,8 @@ impl Mesh {
             );
 
             verts.push(v(DVec3::ZERO, DVec3::Y));
-            verts.push(v(p0, DVec3::Y));
             verts.push(v(p1, DVec3::Y));
+            verts.push(v(p0, DVec3::Y));
         }
 
         Self {
