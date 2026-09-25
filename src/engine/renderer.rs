@@ -6,42 +6,20 @@ use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
 use std::sync::Arc;
 use vulkano::{
-    VulkanLibrary,
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
+    VulkanLibrary, buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer}, command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, RenderPassBeginInfo,
         SubpassBeginInfo, SubpassContents, SubpassEndInfo,
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-    },
-    descriptor_set::{
+    }, descriptor_set::{
         DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
-    },
-    device::{
+    }, device::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
-    },
-    format::Format,
-    image::{Image, ImageUsage, SampleCount, view::ImageView},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
-        graphics::{
-            GraphicsPipelineCreateInfo,
-            color_blend::ColorBlendState,
-            depth_stencil::DepthState,
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
-    swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
-    sync::{self, GpuFuture},
+    }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
+            GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::{CullMode, FrontFace, RasterizationState}, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
+        }, layout::PipelineDescriptorSetLayoutCreateInfo,
+    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
 };
 
 use crate::engine::Engine;
@@ -397,8 +375,13 @@ impl Renderer {
         pipeline_info.input_assembly_state = Some(InputAssemblyState::default());
         pipeline_info.viewport_state = Some(ViewportState::default());
         pipeline_info.dynamic_state.insert(DynamicState::Viewport);
-        pipeline_info.rasterization_state = Some(RasterizationState {
+        /*pipeline_info.rasterization_state = Some(RasterizationState {
             cull_mode: vulkano::pipeline::graphics::rasterization::CullMode::None,
+            ..Default::default()
+        });*/
+        pipeline_info.rasterization_state = Some(RasterizationState {
+            cull_mode: CullMode::Back,
+            front_face: FrontFace::CounterClockwise,
             ..Default::default()
         });
         pipeline_info.multisample_state = Some(MultisampleState::default());
@@ -651,7 +634,7 @@ impl Renderer {
                 planet.radius,
                 camera.position,
                 planet.max_level,
-                16.0,
+                4.0,
                 (camera.fov as f64).to_radians(),
                 screen_h,
             );
@@ -664,7 +647,7 @@ impl Renderer {
                     transform.position,
                     planet.radius,
                     camera.position,
-                    4,
+                    1,
                 );
                 vertices.extend_from_slice(&cm.vertices);
             }

@@ -322,8 +322,8 @@ impl Mesh {
             verts.push(v(p1_top, DVec3::Z));
 
             verts.push(v(DVec3::new(0.0, 0.0, -half_depth), DVec3::NEG_Z));
-            verts.push(v(p0_bottom, DVec3::NEG_Z));
             verts.push(v(p1_bottom, DVec3::NEG_Z));
+            verts.push(v(p0_bottom, DVec3::NEG_Z));
         }
 
         Self {
@@ -398,27 +398,31 @@ impl Mesh {
 
             // Inner
             verts.push(v(p2_bottom, p2.normalize()));
-            verts.push(v(p3_bottom, p3.normalize()));
             verts.push(v(p3_top, p3.normalize()));
+            verts.push(v(p3_bottom, p3.normalize()));
 
             verts.push(v(p2_bottom, p2.normalize()));
-            verts.push(v(p3_top, p3.normalize()));
             verts.push(v(p2_top, p2.normalize()));
+            verts.push(v(p3_top, p3.normalize()));
 
             // Inner to outer
+            // Top ring
             verts.push(v(p0_top, DVec3::Z));
             verts.push(v(p1_top, DVec3::Z));
             verts.push(v(p2_top, DVec3::Z));
+            
             verts.push(v(p1_top, DVec3::Z));
-            verts.push(v(p2_top, DVec3::Z));
             verts.push(v(p3_top, DVec3::Z));
+            verts.push(v(p2_top, DVec3::Z));
 
-            verts.push(v(p0_bottom, DVec3::Z));
-            verts.push(v(p1_bottom, DVec3::Z));
-            verts.push(v(p2_bottom, DVec3::Z));
-            verts.push(v(p1_bottom, DVec3::Z));
-            verts.push(v(p2_bottom, DVec3::Z));
-            verts.push(v(p3_bottom, DVec3::Z));
+            // Bottom ring
+            verts.push(v(p0_bottom, DVec3::NEG_Z));
+            verts.push(v(p2_bottom, DVec3::NEG_Z));
+            verts.push(v(p1_bottom, DVec3::NEG_Z));
+            
+            verts.push(v(p1_bottom, DVec3::NEG_Z));
+            verts.push(v(p2_bottom, DVec3::NEG_Z));
+            verts.push(v(p3_bottom, DVec3::NEG_Z));
         }
 
         Self {
@@ -495,12 +499,12 @@ impl Mesh {
             let n1 = (DVec3::Y * radius + dir1 * h).normalize();
     
             verts.push(v(apex, n0));
-            verts.push(v(p0, n0));
             verts.push(v(p1, n1));
+            verts.push(v(p0, n0));
     
             verts.push(v(base_center, down));
-            verts.push(v(p1, down));
             verts.push(v(p0, down));
+            verts.push(v(p1, down));
         }
     
         Self { vertices: verts }
@@ -652,12 +656,12 @@ impl Mesh {
                 );
 
                 verts.push(v(p0, p0.normalize()));
-                verts.push(v(p2, p2.normalize()));
                 verts.push(v(p1, p1.normalize()));
+                verts.push(v(p2, p2.normalize()));
 
                 verts.push(v(p1, p1.normalize()));
-                verts.push(v(p2, p2.normalize()));
                 verts.push(v(p3, p3.normalize()));
+                verts.push(v(p2, p2.normalize()));
             }
         }
 
@@ -707,15 +711,15 @@ impl Mesh {
                 );
     
                 verts.push(v(p0, p0.normalize()));
-                verts.push(v(p2, p2.normalize()));
                 verts.push(v(p1, p1.normalize()));
+                verts.push(v(p2, p2.normalize()));
     
                 verts.push(v(p1, p1.normalize()));
-                verts.push(v(p2, p2.normalize()));
                 verts.push(v(p3, p3.normalize()));
+                verts.push(v(p2, p2.normalize()));
             }
 
-            let center = DVec3::new(0.0, 0.0, 0.0);
+            let center = DVec3::new(0.0, -0.5, 0.0);
             let down = DVec3::new(0.0, -1.0, 0.0);
             
             for j in 0..segments {
@@ -726,8 +730,8 @@ impl Mesh {
                 let p1 = DVec3::new(radius * theta1.cos(),  -0.5, radius * theta1.sin());
                 
                 verts.push(v(center, down));
-                verts.push(v(p1, down));
                 verts.push(v(p0, down));
+                verts.push(v(p1, down));
             }
         }
     
@@ -817,17 +821,17 @@ impl Mesh {
                 verts.push(v(b2, n_b2));
     
                 verts.push(v(b1, n_b1));
-                verts.push(v(b2, n_b2));
                 verts.push(v(b3, n_b3));
+                verts.push(v(b2, n_b2));
 
                 // Top
                 verts.push(v(t0, n_t0));
-                verts.push(v(t2, n_t2));
                 verts.push(v(t1, n_t1));
+                verts.push(v(t2, n_t2));
     
                 verts.push(v(t1, n_t1));
-                verts.push(v(t2, n_t2));
                 verts.push(v(t3, n_t3));
+                verts.push(v(t2, n_t2));
 
                 let s0 = DVec3::new(radius * theta0.cos(), -half_height, radius * theta0.sin());
                 let s1 = DVec3::new(radius * theta1.cos(), -half_height, radius * theta1.sin());
