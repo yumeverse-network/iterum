@@ -3,7 +3,7 @@ use glam::{DVec3, Quat, Vec3};
 
 use crate::engine::mesh::Mesh;
 use crate::engine::nodes::light::PointLight;
-use crate::engine::nodes::planet::Planet;
+use crate::engine::nodes::planet::{Planet, Star};
 use crate::engine::transform::Transform;
 
 pub fn spawn(world: &mut World) {
@@ -17,6 +17,32 @@ pub fn spawn(world: &mut World) {
         Planet {
             radius: 6.371e8,
             max_level: 20,
+        },
+    ));
+
+    // Spawn star / sun
+    world.spawn((
+        Transform {
+            position: DVec3::new(-2.0e9, 1.0e2, -1.0e7),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(6.96e8),
+        },
+        Mesh::icosphere(3),
+        Star {
+            color: Vec3::new(1.0, 0.95, 0.85),
+            power: 4.0e18,
+        },
+    ));
+    world.spawn((
+        Transform {
+            position: DVec3::new(2.0e9, 1.0e9, 1.0e9),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(4.0e8),
+        },
+        Mesh::icosphere(3),
+        Star {
+            color: Vec3::new(0.9, 0.1, 0.0),
+            power: 2.0e18,
         },
     ));
 

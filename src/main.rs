@@ -158,7 +158,7 @@ fn main() {
         let mut dy = 0.0;
 
         if input.is_action_pressed("speedup") {
-            speed = 1.0e7;
+            speed = 2.0e10;
         } else {
             speed = 10.0;
         }

@@ -1,6 +1,4 @@
-// src/engine/renderer.rs
-use crate::engine::nodes::light::PointLight;
-use crate::engine::nodes::planet::Planet;
+use crate::engine::nodes::planet::{Planet, Star};
 use crate::engine::planet;
 use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
@@ -18,7 +16,7 @@ use vulkano::{
     }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
             GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::{CullMode, FrontFace, RasterizationState}, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
-        }, layout::{self, PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
+        }, layout::{PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
     }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, shader::ShaderStages, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
 };
 
@@ -28,8 +26,17 @@ use crate::engine::mesh::{Mesh, Vertices};
 use crate::engine::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
-// Max vertices push per frame. Allocated once, overwritten every frame.
 const MAX_VERTICES: u64 = 16_000_000;
+const MAX_LIGHTS: usize = 8;
+
+#[derive(BufferContents, Copy, Clone)]
+#[repr(C)]
+struct GpuLight {
+    position: [f32; 3],
+    _pad0: f32,
+    color: [f32; 3],
+    power: f32,
+}
 
 pub struct Renderer {
     device: Option<Arc<Device>>,
@@ -54,8 +61,10 @@ pub struct Renderer {
 #[repr(C)]
 struct ModelPush {
     model: [[f32; 4]; 4],
+    emissive: [f32; 4]
 }
 
+/*
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
 struct SceneUniform {
@@ -67,10 +76,22 @@ struct SceneUniform {
     _padding1: f32,
 
     light_color: [f32; 3],
-    light_intensity: f32,
+    light_power: f32,
 
     camera_position: [f32; 3],
     _padding2: f32,
+}*/
+
+#[derive(BufferContents, Copy, Clone)]
+#[repr(C)]
+struct SceneUniform {
+    view: [[f32; 4]; 4],
+    projection: [[f32; 4]; 4],
+    camera_position: [f32; 3],
+    _pad0: f32,
+    light_count: u32,
+    _pad1: [u32; 3],
+    lights: [GpuLight; MAX_LIGHTS],
 }
 
 impl Renderer {
@@ -375,7 +396,7 @@ impl Renderer {
         layout_info.push_constant_ranges = vec![PushConstantRange {
             stages: ShaderStages::VERTEX,
             offset: 0,
-            size: 64,
+            size: 80,
         }];
 
         let layout = PipelineLayout::new(device.clone(), layout_info).unwrap();
@@ -600,7 +621,7 @@ impl Renderer {
         }*/
 
         // Convert the light to camera-relative coordinates.
-        let (relative_light_position, light_color, light_intensity) = match engine
+        /*let (relative_light_position, light_color, light_intensity) = match engine
             .world
             .query::<(&Transform, &PointLight)>()
             .iter(&engine.world)
@@ -612,7 +633,43 @@ impl Renderer {
                 light.intensity,
             ),
             None => return,
-        };
+        };*/
+        
+        /*let (relative_light_position, light_color, light_power) = match engine
+            .world
+            .query::<(&Transform, &Star)>()
+            .iter(&engine.world)
+            .next()
+        {
+            Some((transform, star)) => (
+                transform.position.camera_relative_f32(camera.position),
+                star.color,
+                star.power,
+            ),
+            None => return,
+        };*/
+
+        let mut gpu_lights = [GpuLight {
+            position: [0.0; 3], _pad0: 0.0,
+            color: [0.0; 3], power: 0.0,
+        }; MAX_LIGHTS];
+        
+        let mut light_count = 0usize;
+        for (transform, star) in engine
+            .world
+            .query::<(&Transform, &Star)>()
+            .iter(&engine.world)
+        {
+            if light_count >= MAX_LIGHTS { break; }
+            let p = transform.position.camera_relative_f32(camera.position);
+            gpu_lights[light_count] = GpuLight {
+                position: [p.x as f32, p.y as f32, p.z as f32],
+                _pad0: 0.0,
+                color: star.color.to_array(),
+                power: star.power,
+            };
+            light_count += 1;
+        }
 
         // Clone the Subbuffer
         let vertex_buffer = self.vertex_buffer.as_ref().unwrap().clone();
@@ -625,10 +682,9 @@ impl Renderer {
         let mut objects = Vec::new(); // (start, count, position, rotation, scale)
         let mut planet_objects: Vec<(usize, usize, DVec3)> = Vec::new(); // (start, count, planet_pos)
 
-        // --- existing meshes ---
-        for (transform, mesh) in engine
+        for (transform, mesh, star) in engine
             .world
-            .query::<(&Transform, &Mesh)>()
+            .query::<(&Transform, &Mesh, Option<&Star>)>()
             .iter(&engine.world)
         {
             let start_vertex = vertices.len();
@@ -639,6 +695,7 @@ impl Renderer {
                 transform.position,
                 transform.rotation,
                 transform.scale,
+                star.map(|s| (s.color, 1.0_f32)),
             ));
         }
 
@@ -765,7 +822,7 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            SceneUniform {
+            /*SceneUniform {
                 view: view.to_cols_array_2d(),
                 projection: projection.to_cols_array_2d(),
                 light_position: [
@@ -775,9 +832,18 @@ impl Renderer {
                 ],
                 _padding1: 0.0,
                 light_color: light_color.to_array(),
-                light_intensity,
+                light_power,
                 camera_position: [0.0, 0.0, 0.0],
                 _padding2: 0.0,
+            },*/
+            SceneUniform {
+                view: view.to_cols_array_2d(),
+                projection: projection.to_cols_array_2d(),
+                camera_position: [0.0, 0.0, 0.0],
+                _pad0: 0.0,
+                light_count: light_count as u32,
+                _pad1: [0; 3],
+                lights: gpu_lights,
             },
         ).unwrap();
 
@@ -805,7 +871,7 @@ impl Renderer {
                     .push_constants(
                         graphics_pipeline.layout().clone(),
                         0,
-                        ModelPush { model: model.to_cols_array_2d() },
+                        ModelPush { model: model.to_cols_array_2d(), emissive: [0.0; 4], },
                     )
                     .unwrap();
                 builder
@@ -814,16 +880,21 @@ impl Renderer {
             }
         }
         
-        for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
+        for (start_vertex, vertex_count, object_position, rotation, scale, star) in objects {
             let relative_position = object_position.camera_relative_f32(camera.position);
             let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
+        
+            let emissive = match star {
+                Some((c, i)) => [c.x, c.y, c.z, i],
+                None => [0.0; 4],
+            };
         
             unsafe {
                 builder
                     .push_constants(
                         graphics_pipeline.layout().clone(),
                         0,
-                        ModelPush { model: model.to_cols_array_2d() },
+                        ModelPush { model: model.to_cols_array_2d(), emissive },
                     )
                     .unwrap();
                 builder
