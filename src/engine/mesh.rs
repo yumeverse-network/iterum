@@ -1,8 +1,8 @@
+use MathUtils;
 use bevy_ecs::prelude::*;
-use glam::DVec3;
+use glam::{DVec3, Vec3};
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
-use MathUtils;
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
@@ -14,72 +14,103 @@ pub struct Vertices {
     pub normal: [f32; 3],
 }
 
+/// Shared vertex helper (replaces the copy-pasted inner `fn v` in every constructor).
+fn v(position: DVec3, normal: DVec3) -> Vertices {
+    Vertices {
+        position: position.as_vec3().to_array(),
+        normal: normal.as_vec3().to_array(),
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct Bounds {
+    pub center: Vec3,
+    pub radius: f32,
+}
+
+impl Bounds {
+    pub fn from_vertices(verts: &[Vertices]) -> Self {
+        if verts.is_empty() {
+            return Self {
+                center: Vec3::ZERO,
+                radius: 0.0,
+            };
+        }
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        for v in verts {
+            let p = Vec3::from(v.position);
+            min = min.min(p);
+            max = max.max(p);
+        }
+        let center = (min + max) * 0.5;
+        let radius = verts
+            .iter()
+            .map(|v| (Vec3::from(v.position) - center).length())
+            .fold(0.0, f32::max);
+        Self { center, radius }
+    }
+}
+
 #[derive(Component)]
 pub struct Mesh {
     pub vertices: Vec<Vertices>,
+    pub bounds: Bounds,
 }
 
 impl Mesh {
+    /// Every constructor goes through this, so bounds are always computed.
+    pub fn new(vertices: Vec<Vertices>) -> Self {
+        let bounds = Bounds::from_vertices(&vertices);
+        Self { vertices, bounds }
+    }
+
     // Cube
     pub fn cube() -> Self {
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
-        Self {
-            vertices: vec![
-                // Front
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::Z),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::Z),
-                v(DVec3::new( 1.0,  1.0,  1.0), DVec3::Z),
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::Z),
-                v(DVec3::new( 1.0,  1.0,  1.0), DVec3::Z),
-                v(DVec3::new(-1.0,  1.0,  1.0), DVec3::Z),
-
-                // Back
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new(-1.0,  1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new(-1.0,  1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new( 1.0,  1.0, -1.0), DVec3::NEG_Z),
-
-                // Left
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0,  1.0,  1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0,  1.0,  1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0,  1.0, -1.0), DVec3::NEG_X),
-
-                // Right
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::X),
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::X),
-                v(DVec3::new( 1.0,  1.0, -1.0), DVec3::X),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::X),
-                v(DVec3::new( 1.0,  1.0, -1.0), DVec3::X),
-                v(DVec3::new( 1.0,  1.0,  1.0), DVec3::X),
-
-                // Top
-                v(DVec3::new(-1.0,  1.0,  1.0), DVec3::Y),
-                v(DVec3::new( 1.0,  1.0,  1.0), DVec3::Y),
-                v(DVec3::new( 1.0,  1.0, -1.0), DVec3::Y),
-                v(DVec3::new(-1.0,  1.0,  1.0), DVec3::Y),
-                v(DVec3::new( 1.0,  1.0, -1.0), DVec3::Y),
-                v(DVec3::new(-1.0,  1.0, -1.0), DVec3::Y),
-
-                // Bottom
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_Y),
-            ],
-        }
+        Self::new(vec![
+            // Front
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::Z),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::Z),
+            v(DVec3::new(1.0, 1.0, 1.0), DVec3::Z),
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::Z),
+            v(DVec3::new(1.0, 1.0, 1.0), DVec3::Z),
+            v(DVec3::new(-1.0, 1.0, 1.0), DVec3::Z),
+            // Back
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(-1.0, 1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(-1.0, 1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(1.0, 1.0, -1.0), DVec3::NEG_Z),
+            // Left
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, 1.0, 1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, 1.0, 1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, 1.0, -1.0), DVec3::NEG_X),
+            // Right
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::X),
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::X),
+            v(DVec3::new(1.0, 1.0, -1.0), DVec3::X),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::X),
+            v(DVec3::new(1.0, 1.0, -1.0), DVec3::X),
+            v(DVec3::new(1.0, 1.0, 1.0), DVec3::X),
+            // Top
+            v(DVec3::new(-1.0, 1.0, 1.0), DVec3::Y),
+            v(DVec3::new(1.0, 1.0, 1.0), DVec3::Y),
+            v(DVec3::new(1.0, 1.0, -1.0), DVec3::Y),
+            v(DVec3::new(-1.0, 1.0, 1.0), DVec3::Y),
+            v(DVec3::new(1.0, 1.0, -1.0), DVec3::Y),
+            v(DVec3::new(-1.0, 1.0, -1.0), DVec3::Y),
+            // Bottom
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::NEG_Y),
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::NEG_Y),
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::NEG_Y),
+        ])
     }
 
     // Icosphere
@@ -89,20 +120,18 @@ impl Mesh {
         let t = (1.0 + 5.0_f64.sqrt()) / 2.0;
 
         let mut positions = vec![
-            DVec3::new(-1.0,  t,  0.0),
-            DVec3::new( 1.0,  t,  0.0),
-            DVec3::new(-1.0, -t,  0.0),
-            DVec3::new( 1.0, -t,  0.0),
-
-            DVec3::new( 0.0, -1.0,  t),
-            DVec3::new( 0.0,  1.0,  t),
-            DVec3::new( 0.0, -1.0, -t),
-            DVec3::new( 0.0,  1.0, -t),
-
-            DVec3::new( t,  0.0, -1.0),
-            DVec3::new( t,  0.0,  1.0),
-            DVec3::new(-t,  0.0, -1.0),
-            DVec3::new(-t,  0.0,  1.0),
+            DVec3::new(-1.0, t, 0.0),
+            DVec3::new(1.0, t, 0.0),
+            DVec3::new(-1.0, -t, 0.0),
+            DVec3::new(1.0, -t, 0.0),
+            DVec3::new(0.0, -1.0, t),
+            DVec3::new(0.0, 1.0, t),
+            DVec3::new(0.0, -1.0, -t),
+            DVec3::new(0.0, 1.0, -t),
+            DVec3::new(t, 0.0, -1.0),
+            DVec3::new(t, 0.0, 1.0),
+            DVec3::new(-t, 0.0, -1.0),
+            DVec3::new(-t, 0.0, 1.0),
         ];
 
         // Normalize the initial icosahedron onto the unit sphere.
@@ -116,19 +145,16 @@ impl Mesh {
             [0, 1, 7],
             [0, 7, 10],
             [0, 10, 11],
-
             [1, 5, 9],
             [5, 11, 4],
             [11, 10, 2],
             [10, 7, 6],
             [7, 1, 8],
-
             [3, 9, 4],
             [3, 4, 2],
             [3, 2, 6],
             [3, 6, 8],
             [3, 8, 9],
-
             [4, 9, 5],
             [2, 4, 11],
             [6, 2, 10],
@@ -153,8 +179,7 @@ impl Mesh {
                     return index;
                 }
 
-                let position =
-                    (positions[a as usize] + positions[b as usize]).normalize();
+                let position = (positions[a as usize] + positions[b as usize]).normalize();
 
                 let index = positions.len() as u32;
                 positions.push(position);
@@ -177,131 +202,71 @@ impl Mesh {
             triangles = next_triangles;
         }
 
-        // Convert indexed triangles into your current vertex format.
+        // Convert indexed triangles into the vertex format.
         let mut vertices = Vec::with_capacity(triangles.len() * 3);
 
         for [a, b, c] in triangles {
             for index in [a, b, c] {
                 let position = positions[index as usize];
-
-                vertices.push(Vertices {
-                    position: position.as_vec3().to_array(),
-                    normal: position.as_vec3().to_array(),
-                });
+                vertices.push(v(position, position));
             }
         }
 
-        Self { vertices }
+        Self::new(vertices)
     }
 
     // Plane
     pub fn plane() -> Self {
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
-        Self {
-            vertices: vec![
-                v(DVec3::new(-1.0, -1.0,  0.0), DVec3::Z),
-                v(DVec3::new( 1.0, -1.0,  0.0), DVec3::Z),
-                v(DVec3::new( 1.0,  1.0,  0.0), DVec3::Z),
-                v(DVec3::new(-1.0, -1.0,  0.0), DVec3::Z),
-                v(DVec3::new( 1.0,  1.0,  0.0), DVec3::Z),
-                v(DVec3::new(-1.0,  1.0,  0.0), DVec3::Z),
-            ],
-        }
+        Self::new(vec![
+            v(DVec3::new(-1.0, -1.0, 0.0), DVec3::Z),
+            v(DVec3::new(1.0, -1.0, 0.0), DVec3::Z),
+            v(DVec3::new(1.0, 1.0, 0.0), DVec3::Z),
+            v(DVec3::new(-1.0, -1.0, 0.0), DVec3::Z),
+            v(DVec3::new(1.0, 1.0, 0.0), DVec3::Z),
+            v(DVec3::new(-1.0, 1.0, 0.0), DVec3::Z),
+        ])
     }
 
     // Triangle
     pub fn triangle() -> Self {
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
-        Self {
-            vertices: vec![
-                v(DVec3::new(-1.0, -1.0,  0.0), DVec3::Z),
-                v(DVec3::new( 1.0, -1.0,  0.0), DVec3::Z),
-                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::Z),
-            ],
-        }
+        Self::new(vec![
+            v(DVec3::new(-1.0, -1.0, 0.0), DVec3::Z),
+            v(DVec3::new(1.0, -1.0, 0.0), DVec3::Z),
+            v(DVec3::new(0.0, 1.0, 0.0), DVec3::Z),
+        ])
     }
 
     // Circle
     pub fn circle(segments: i32, radius: f64) -> Self {
         let mut verts = Vec::new();
 
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
         for i in 0..segments {
-            let theta0 =
-                2.0 * MathUtils::PI * i as f64 / segments as f64;
-            let theta1 =
-                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
-            let p0 = DVec3::new(
-                radius * theta0.cos(),
-                radius * theta0.sin(),
-                0.0,
-            );
-
-            let p1 = DVec3::new(
-                radius * theta1.cos(),
-                radius * theta1.sin(),
-                0.0,
-            );
+            let p0 = DVec3::new(radius * theta0.cos(), radius * theta0.sin(), 0.0);
+            let p1 = DVec3::new(radius * theta1.cos(), radius * theta1.sin(), 0.0);
 
             verts.push(v(DVec3::ZERO, DVec3::Z));
             verts.push(v(p0, DVec3::Z));
             verts.push(v(p1, DVec3::Z));
         }
 
-        Self {
-            vertices: verts,
-        }
+        Self::new(verts)
     }
 
     // Cylinder
     pub fn cylinder(segments: i32, radius: f64, depth: f64) -> Self {
         let mut verts = Vec::new();
 
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
         let half_depth = depth;
 
         for i in 0..segments {
-            let theta0 =
-                2.0 * MathUtils::PI * i as f64 / segments as f64;
-            let theta1 =
-                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
-            let p0 = DVec3::new(
-                radius * theta0.cos(),
-                radius * theta0.sin(),
-                0.0,
-            );
-
-            let p1 = DVec3::new(
-                radius * theta1.cos(),
-                radius * theta1.sin(),
-                0.0,
-            );
+            let p0 = DVec3::new(radius * theta0.cos(), radius * theta0.sin(), 0.0);
+            let p1 = DVec3::new(radius * theta1.cos(), radius * theta1.sin(), 0.0);
 
             let p0_top = p0 + DVec3::Z * half_depth;
             let p1_top = p1 + DVec3::Z * half_depth;
@@ -326,49 +291,28 @@ impl Mesh {
             verts.push(v(p0_bottom, DVec3::NEG_Z));
         }
 
-        Self {
-            vertices: verts,
-        }
+        Self::new(verts)
     }
 
     // Tube
     pub fn tube(segments: i32, radius: f64, depth: f64, thickness: f64) -> Self {
         let mut verts = Vec::new();
 
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
         let half_depth = depth;
         let inner_radius: f64 = radius - thickness;
 
         for i in 0..segments {
-            let theta0 =
-                2.0 * MathUtils::PI * i as f64 / segments as f64;
-            let theta1 =
-                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
-            let p0 = DVec3::new(
-                radius * theta0.cos(),
-                radius * theta0.sin(),
-                0.0,
-            );
-
-            let p1 = DVec3::new(
-                radius * theta1.cos(),
-                radius * theta1.sin(),
-                0.0,
-            );
+            let p0 = DVec3::new(radius * theta0.cos(), radius * theta0.sin(), 0.0);
+            let p1 = DVec3::new(radius * theta1.cos(), radius * theta1.sin(), 0.0);
 
             let p2 = DVec3::new(
                 inner_radius * theta0.cos(),
                 inner_radius * theta0.sin(),
                 0.0,
             );
-
             let p3 = DVec3::new(
                 inner_radius * theta1.cos(),
                 inner_radius * theta1.sin(),
@@ -410,7 +354,7 @@ impl Mesh {
             verts.push(v(p0_top, DVec3::Z));
             verts.push(v(p1_top, DVec3::Z));
             verts.push(v(p2_top, DVec3::Z));
-            
+
             verts.push(v(p1_top, DVec3::Z));
             verts.push(v(p3_top, DVec3::Z));
             verts.push(v(p2_top, DVec3::Z));
@@ -419,209 +363,158 @@ impl Mesh {
             verts.push(v(p0_bottom, DVec3::NEG_Z));
             verts.push(v(p2_bottom, DVec3::NEG_Z));
             verts.push(v(p1_bottom, DVec3::NEG_Z));
-            
+
             verts.push(v(p1_bottom, DVec3::NEG_Z));
             verts.push(v(p2_bottom, DVec3::NEG_Z));
             verts.push(v(p3_bottom, DVec3::NEG_Z));
         }
 
-        Self {
-            vertices: verts,
-        }
+        Self::new(verts)
     }
 
     // Disc
     pub fn disc(segments: i32, radius: f64) -> Self {
         let mut verts = Vec::new();
 
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
         for i in 0..segments {
-            let theta0 =
-                2.0 * MathUtils::PI * i as f64 / segments as f64;
-            let theta1 =
-                2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
+            let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
 
-            let p0 = DVec3::new(
-                radius * theta0.cos(),
-                0.0,
-                radius * theta0.sin(),
-            );
-
-            let p1 = DVec3::new(
-                radius * theta1.cos(),
-                0.0,
-                radius * theta1.sin(),
-            );
+            let p0 = DVec3::new(radius * theta0.cos(), 0.0, radius * theta0.sin());
+            let p1 = DVec3::new(radius * theta1.cos(), 0.0, radius * theta1.sin());
 
             verts.push(v(DVec3::ZERO, DVec3::Y));
             verts.push(v(p1, DVec3::Y));
             verts.push(v(p0, DVec3::Y));
         }
 
-        Self {
-            vertices: verts,
-        }
+        Self::new(verts)
     }
 
     // Cone
     pub fn cone(segments: i32, radius: f64) -> Self {
         let mut verts = Vec::new();
-    
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-    
+
         let apex = DVec3::new(0.0, 1.0, 0.0);
         let base_center = DVec3::new(0.0, -1.0, 0.0);
         let h = 2.0;
         let down = -DVec3::Y;
-    
+
         for i in 0..segments {
             let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
             let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
-    
+
             let dir0 = DVec3::new(theta0.cos(), 0.0, theta0.sin());
             let dir1 = DVec3::new(theta1.cos(), 0.0, theta1.sin());
-    
+
             let p0 = DVec3::new(radius * dir0.x, -1.0, radius * dir0.z);
             let p1 = DVec3::new(radius * dir1.x, -1.0, radius * dir1.z);
-    
+
             let n0 = (DVec3::Y * radius + dir0 * h).normalize();
             let n1 = (DVec3::Y * radius + dir1 * h).normalize();
-    
+
             verts.push(v(apex, n0));
             verts.push(v(p1, n1));
             verts.push(v(p0, n0));
-    
+
             verts.push(v(base_center, down));
             verts.push(v(p0, down));
             verts.push(v(p1, down));
         }
-    
-        Self { vertices: verts }
+
+        Self::new(verts)
     }
 
     // Triangular prism
     pub fn prism(depth: f64) -> Self {
         let mut verts = Vec::new();
-    
-        let v = |position: DVec3, normal: DVec3| -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        };
-        
+
         let front = DVec3::new(0.0, 0.0, depth);
-        let back  = DVec3::new(0.0, 0.0, -depth);
-    
+        let back = DVec3::new(0.0, 0.0, -depth);
+
         let a = DVec3::new(-1.0, -1.0, 0.0);
-        let b = DVec3::new( 1.0, -1.0, 0.0);
-        let c = DVec3::new( 0.0,  1.0, 0.0);
-    
+        let b = DVec3::new(1.0, -1.0, 0.0);
+        let c = DVec3::new(0.0, 1.0, 0.0);
+
         let af = a + front;
         let bf = b + front;
         let cf = c + front;
-    
+
         let ab = a + back;
         let bb = b + back;
         let cb = c + back;
-    
+
         // front
         verts.push(v(af, DVec3::Z));
         verts.push(v(bf, DVec3::Z));
         verts.push(v(cf, DVec3::Z));
-    
+
         // back
         verts.push(v(ab, DVec3::NEG_Z));
         verts.push(v(cb, DVec3::NEG_Z));
         verts.push(v(bb, DVec3::NEG_Z));
-    
+
+        // bottom
         verts.push(v(ab, DVec3::NEG_Y));
         verts.push(v(bb, DVec3::NEG_Y));
         verts.push(v(bf, DVec3::NEG_Y));
         verts.push(v(ab, DVec3::NEG_Y));
         verts.push(v(bf, DVec3::NEG_Y));
         verts.push(v(af, DVec3::NEG_Y));
-    
-        verts.push(v(bb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-        verts.push(v(cb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-        verts.push(v(cf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-        verts.push(v(bb, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-        verts.push(v(cf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-        verts.push(v(bf, DVec3::new( 2.0,  1.0, 0.0).normalize()));
-    
-        verts.push(v(cb, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-        verts.push(v(ab, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-        verts.push(v(af, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-        verts.push(v(cb, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-        verts.push(v(af, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-        verts.push(v(cf, DVec3::new(-2.0, -1.0, 0.0).normalize()));
-    
-        Self { vertices: verts }
+
+        // right slope
+        let n_right = DVec3::new(2.0, 1.0, 0.0).normalize();
+        verts.push(v(bb, n_right));
+        verts.push(v(cb, n_right));
+        verts.push(v(cf, n_right));
+        verts.push(v(bb, n_right));
+        verts.push(v(cf, n_right));
+        verts.push(v(bf, n_right));
+
+        // left slope
+        let n_left = DVec3::new(-2.0, 1.0, 0.0).normalize();
+        verts.push(v(cb, n_left));
+        verts.push(v(ab, n_left));
+        verts.push(v(af, n_left));
+        verts.push(v(cb, n_left));
+        verts.push(v(af, n_left));
+        verts.push(v(cf, n_left));
+
+        Self::new(verts)
     }
 
     // Pyramid
     pub fn pyramid() -> Self {
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-
-        Self {
-            vertices: vec![
-                // Front
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::Z),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::Z),
-                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::Z),
-
-                // Back
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Z),
-                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::NEG_Z),
-
-                // Left
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_X),
-                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::NEG_X),
-
-                // Right
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::X),
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::X),
-                v(DVec3::new( 0.0,  1.0,  0.0), DVec3::X),
-
-                // Bottom
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
-                v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
-                v(DVec3::new( 1.0, -1.0,  1.0), DVec3::NEG_Y),
-                v(DVec3::new(-1.0, -1.0,  1.0), DVec3::NEG_Y),
-            ],
-        }
+        Self::new(vec![
+            // Front
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::Z),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::Z),
+            v(DVec3::new(0.0, 1.0, 0.0), DVec3::Z),
+            // Back
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Z),
+            v(DVec3::new(0.0, 1.0, 0.0), DVec3::NEG_Z),
+            // Left
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_X),
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::NEG_X),
+            v(DVec3::new(0.0, 1.0, 0.0), DVec3::NEG_X),
+            // Right
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::X),
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::X),
+            v(DVec3::new(0.0, 1.0, 0.0), DVec3::X),
+            // Bottom
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::NEG_Y),
+            v(DVec3::new(-1.0, -1.0, -1.0), DVec3::NEG_Y),
+            v(DVec3::new(1.0, -1.0, 1.0), DVec3::NEG_Y),
+            v(DVec3::new(-1.0, -1.0, 1.0), DVec3::NEG_Y),
+        ])
     }
 
     // UV Sphere
     pub fn uv_sphere(segments: i32, rings: i32, radius: f64) -> Self {
         let mut verts = Vec::new();
-
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
 
         for i in 0..rings {
             let phi0 = MathUtils::PI * i as f64 / rings as f64;
@@ -636,19 +529,16 @@ impl Mesh {
                     radius * phi0.cos(),
                     radius * phi0.sin() * theta0.sin(),
                 );
-                
                 let p1 = DVec3::new(
                     radius * phi0.sin() * theta1.cos(),
                     radius * phi0.cos(),
                     radius * phi0.sin() * theta1.sin(),
                 );
-    
                 let p2 = DVec3::new(
                     radius * phi1.sin() * theta0.cos(),
                     radius * phi1.cos(),
                     radius * phi1.sin() * theta0.sin(),
                 );
-    
                 let p3 = DVec3::new(
                     radius * phi1.sin() * theta1.cos(),
                     radius * phi1.cos(),
@@ -665,30 +555,21 @@ impl Mesh {
             }
         }
 
-        Self {
-            vertices: verts,
-        }
+        Self::new(verts)
     }
 
     // Hemisphere
     pub fn hemisphere(segments: i32, rings: i32, radius: f64) -> Self {
         let mut verts = Vec::new();
-    
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
-    
+
         for i in 0..rings {
             let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64;
             let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64;
-    
+
             for i in 0..segments {
                 let theta0 = 2.0 * MathUtils::PI * i as f64 / segments as f64;
                 let theta1 = 2.0 * MathUtils::PI * (i + 1) as f64 / segments as f64;
-    
+
                 let p0 = DVec3::new(
                     radius * phi0.sin() * theta0.cos(),
                     radius * phi0.cos() - 0.5,
@@ -709,70 +590,96 @@ impl Mesh {
                     radius * phi1.cos() - 0.5,
                     radius * phi1.sin() * theta1.sin(),
                 );
-    
+
                 verts.push(v(p0, p0.normalize()));
                 verts.push(v(p1, p1.normalize()));
                 verts.push(v(p2, p2.normalize()));
-    
+
                 verts.push(v(p1, p1.normalize()));
                 verts.push(v(p3, p3.normalize()));
                 verts.push(v(p2, p2.normalize()));
             }
-
-            let center = DVec3::new(0.0, -0.5, 0.0);
-            let down = DVec3::new(0.0, -1.0, 0.0);
-            
-            for j in 0..segments {
-                let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
-                let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
-            
-                let p0 = DVec3::new(radius * theta0.cos(),  -0.5, radius * theta0.sin());
-                let p1 = DVec3::new(radius * theta1.cos(),  -0.5, radius * theta1.sin());
-                
-                verts.push(v(center, down));
-                verts.push(v(p0, down));
-                verts.push(v(p1, down));
-            }
         }
-    
-        Self { vertices: verts }
+
+        // Base cap: now emitted once, after the ring loop (was inside it before).
+        let center = DVec3::new(0.0, -0.5, 0.0);
+        let down = DVec3::new(0.0, -1.0, 0.0);
+
+        for j in 0..segments {
+            let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
+            let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
+
+            let p0 = DVec3::new(radius * theta0.cos(), -0.5, radius * theta0.sin());
+            let p1 = DVec3::new(radius * theta1.cos(), -0.5, radius * theta1.sin());
+
+            verts.push(v(center, down));
+            verts.push(v(p0, down));
+            verts.push(v(p1, down));
+        }
+
+        Self::new(verts)
     }
 
     // Capsule
     pub fn capsule(segments: i32, rings: i32, radius: f64, height: f64) -> Self {
         let mut verts = Vec::new();
-    
-        fn v(position: DVec3, normal: DVec3) -> Vertices {
-            Vertices {
-                position: position.as_vec3().to_array(),
-                normal: normal.as_vec3().to_array(),
-            }
-        }
 
         let half_height = height / 2.0;
-    
+
         for i in 0..rings {
             let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64; // Up
             let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64; // Up
             let phi2 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0) * i as f64 / rings as f64;
-            let phi3 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0)  * (i + 1) as f64 / rings as f64;
-    
+            let phi3 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64;
+
             for j in 0..segments {
                 let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
                 let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
 
                 // Normals bottom
-                let n_b0 = DVec3::new(phi2.sin() * theta0.cos(), phi2.cos(), phi2.sin() * theta0.sin());
-                let n_b1 = DVec3::new(phi2.sin() * theta1.cos(), phi2.cos(), phi2.sin() * theta1.sin());
-                let n_b2 = DVec3::new(phi3.sin() * theta0.cos(), phi3.cos(), phi3.sin() * theta0.sin());
-                let n_b3 = DVec3::new(phi3.sin() * theta1.cos(), phi3.cos(), phi3.sin() * theta1.sin());
+                let n_b0 = DVec3::new(
+                    phi2.sin() * theta0.cos(),
+                    phi2.cos(),
+                    phi2.sin() * theta0.sin(),
+                );
+                let n_b1 = DVec3::new(
+                    phi2.sin() * theta1.cos(),
+                    phi2.cos(),
+                    phi2.sin() * theta1.sin(),
+                );
+                let n_b2 = DVec3::new(
+                    phi3.sin() * theta0.cos(),
+                    phi3.cos(),
+                    phi3.sin() * theta0.sin(),
+                );
+                let n_b3 = DVec3::new(
+                    phi3.sin() * theta1.cos(),
+                    phi3.cos(),
+                    phi3.sin() * theta1.sin(),
+                );
 
                 // Normals top
-                let n_t0 = DVec3::new(phi0.sin() * theta0.cos(), phi0.cos(), phi0.sin() * theta0.sin());
-                let n_t1 = DVec3::new(phi0.sin() * theta1.cos(), phi0.cos(), phi0.sin() * theta1.sin());
-                let n_t2 = DVec3::new(phi1.sin() * theta0.cos(), phi1.cos(), phi1.sin() * theta0.sin());
-                let n_t3 = DVec3::new(phi1.sin() * theta1.cos(), phi1.cos(), phi1.sin() * theta1.sin());
-    
+                let n_t0 = DVec3::new(
+                    phi0.sin() * theta0.cos(),
+                    phi0.cos(),
+                    phi0.sin() * theta0.sin(),
+                );
+                let n_t1 = DVec3::new(
+                    phi0.sin() * theta1.cos(),
+                    phi0.cos(),
+                    phi0.sin() * theta1.sin(),
+                );
+                let n_t2 = DVec3::new(
+                    phi1.sin() * theta0.cos(),
+                    phi1.cos(),
+                    phi1.sin() * theta0.sin(),
+                );
+                let n_t3 = DVec3::new(
+                    phi1.sin() * theta1.cos(),
+                    phi1.cos(),
+                    phi1.sin() * theta1.sin(),
+                );
+
                 let b0 = DVec3::new(
                     radius * phi2.sin() * theta0.cos(),
                     radius * phi2.cos() - half_height,
@@ -819,7 +726,7 @@ impl Mesh {
                 verts.push(v(b0, n_b0));
                 verts.push(v(b1, n_b1));
                 verts.push(v(b2, n_b2));
-    
+
                 verts.push(v(b1, n_b1));
                 verts.push(v(b3, n_b3));
                 verts.push(v(b2, n_b2));
@@ -828,29 +735,29 @@ impl Mesh {
                 verts.push(v(t0, n_t0));
                 verts.push(v(t1, n_t1));
                 verts.push(v(t2, n_t2));
-    
+
                 verts.push(v(t1, n_t1));
                 verts.push(v(t3, n_t3));
                 verts.push(v(t2, n_t2));
 
                 let s0 = DVec3::new(radius * theta0.cos(), -half_height, radius * theta0.sin());
                 let s1 = DVec3::new(radius * theta1.cos(), -half_height, radius * theta1.sin());
-                let s2 = DVec3::new(radius * theta0.cos(),  half_height, radius * theta0.sin());
-                let s3 = DVec3::new(radius * theta1.cos(),  half_height, radius * theta1.sin());
-                
+                let s2 = DVec3::new(radius * theta0.cos(), half_height, radius * theta0.sin());
+                let s3 = DVec3::new(radius * theta1.cos(), half_height, radius * theta1.sin());
+
                 let n0 = DVec3::new(theta0.cos(), 0.0, theta0.sin());
                 let n1 = DVec3::new(theta1.cos(), 0.0, theta1.sin());
-                
+
                 verts.push(v(s0, n0));
                 verts.push(v(s2, n0));
                 verts.push(v(s1, n1));
-                
+
                 verts.push(v(s1, n1));
                 verts.push(v(s2, n0));
                 verts.push(v(s3, n1));
             }
         }
-    
-        Self { vertices: verts }
+
+        Self::new(verts)
     }
 }

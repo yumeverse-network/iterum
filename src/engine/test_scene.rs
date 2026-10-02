@@ -73,7 +73,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::icosphere(6),
+        Mesh::icosphere(3),
     ));
 
     world.spawn((

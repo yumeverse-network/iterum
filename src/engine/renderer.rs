@@ -77,6 +77,47 @@ struct DrawObject {
     emissive: [f32; 4],
 }
 
+struct Frustum {
+    planes: [glam::Vec4; 6],
+}
+
+impl Frustum {
+    fn from_view_proj(m: Mat4, view: Mat4) -> Self {
+        let m = m.transpose();
+
+        let mut planes = [
+            m.w_axis + m.x_axis, // Left
+            m.w_axis - m.x_axis, // Right
+            m.w_axis + m.y_axis, // Bottom
+            m.w_axis - m.y_axis, // Top
+            m.z_axis,            // Near (Vulkan [0, 1] Z mapping)
+            m.w_axis - m.z_axis, // Far
+        ];
+
+        let inv_view = view.transpose();
+        let test_point_world = inv_view.transform_point3(glam::Vec3::new(0.0, 0.0, -1.0));
+
+        for p in &mut planes {
+            let len = p.truncate().length();
+            if len > 0.0 {
+                *p /= len;
+            }
+
+            if p.truncate().dot(test_point_world) + p.w < 0.0 {
+                *p = -*p;
+            }
+        }
+
+        Self { planes }
+    }
+
+    fn sphere_visible(&self, center: Vec3, radius: f32) -> bool {
+        self.planes
+            .iter()
+            .all(|p| p.truncate().dot(center) + p.w >= -(radius + 0.1))
+    }
+}
+
 pub struct Renderer {
     device: Option<Arc<Device>>,
     queue: Option<Arc<Queue>>,
@@ -788,7 +829,12 @@ impl Renderer {
         let dimensions = swapchain.image_extent();
 
         let forward = camera.rotation * Vec3::NEG_Z;
-        let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
+
+        let eye = camera.position.as_vec3();
+        let center = eye + forward;
+        let view = glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
+        //let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
+
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
@@ -824,6 +870,11 @@ impl Renderer {
         let dt = engine.get_delta() as f32;
         self.elapsed += dt;
 
+        let cam_up = camera.rotation * Vec3::Y;
+        let view_rel = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, cam_up);
+        let view_proj = projection * view_rel;
+        let frustum = Frustum::from_view_proj(view_proj, view_rel);
+
         let mut vertices: Vec<Vertices> = Vec::new();
         self.draw_list.clear();
 
@@ -832,6 +883,14 @@ impl Renderer {
             .query::<(&Transform, &Mesh, Option<&Star>)>()
             .iter(&engine.world)
         {
+            let rel = transform.position.camera_relative_f32(camera.position);
+            let world_center = rel + transform.rotation * (mesh.bounds.center * transform.scale);
+            let world_radius = mesh.bounds.radius * transform.scale.abs().max_element();
+
+            if !frustum.sphere_visible(world_center, world_radius) {
+                continue;
+            }
+
             let start_vertex = vertices.len();
             vertices.extend_from_slice(&mesh.vertices);
             self.draw_list.push(DrawObject {
@@ -846,9 +905,12 @@ impl Renderer {
             });
         }
 
-        if vertices.is_empty() {
-            return;
-        }
+        /*println!(
+            "DEBUG: Visible objects = {}, Total vertices = {}",
+            self.draw_list.len(),
+            vertices.len()
+        );*/
+
         if vertices.len() as u64 > MAX_VERTICES {
             eprintln!(
                 "Vertex buffer overflow: {} > {}",
@@ -858,13 +920,14 @@ impl Renderer {
             return;
         }
 
-        {
-            let mut writer = self.staging_buffers[frame].write().unwrap();
-            writer[..vertices.len()].copy_from_slice(&vertices);
-        }
         let vertex_count = vertices.len();
 
-        {
+        if vertex_count > 0 {
+            {
+                let mut writer = self.staging_buffers[frame].write().unwrap();
+                writer[..vertex_count].copy_from_slice(&vertices);
+            }
+
             let mut copy_builder = AutoCommandBufferBuilder::primary(
                 self.command_buffer_allocator.as_ref().unwrap().clone(),
                 queue.queue_family_index(),
@@ -914,7 +977,7 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
-        let view_proj = projection * view;
+        //let view_proj = projection * view;
         let inv_view_proj = view_proj.inverse();
 
         let (sky_top, sky_bottom) = match engine
@@ -940,7 +1003,7 @@ impl Renderer {
         {
             let mut w = self.scene_uniforms[frame].write().unwrap();
             *w = SceneUniform {
-                view: view.to_cols_array_2d(),
+                view: view_rel.to_cols_array_2d(), // view.
                 projection: projection.to_cols_array_2d(),
                 inv_view_proj: inv_view_proj.to_cols_array_2d(),
                 camera_position: [0.0, 0.0, 0.0],
@@ -1019,44 +1082,49 @@ impl Renderer {
                 .unwrap();
         }
 
-        let draw_buffer = self
-            .vertex_buffer
-            .as_ref()
-            .unwrap()
-            .clone()
-            .slice(0..vertex_count as u64);
+        if vertex_count > 0 {
+            let draw_buffer = self
+                .vertex_buffer
+                .as_ref()
+                .unwrap()
+                .clone()
+                .slice(0..vertex_count as u64);
 
-        builder
-            .bind_pipeline_graphics(graphics_pipeline.clone())
-            .unwrap()
-            .bind_vertex_buffers(0, draw_buffer)
-            .unwrap()
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                graphics_pipeline.layout().clone(),
-                0,
-                descriptor_set,
-            )
-            .unwrap();
+            builder
+                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .unwrap()
+                .bind_vertex_buffers(0, draw_buffer)
+                .unwrap()
+                .bind_descriptor_sets(
+                    PipelineBindPoint::Graphics,
+                    graphics_pipeline.layout().clone(),
+                    0,
+                    descriptor_set,
+                )
+                .unwrap();
 
-        for obj in &self.draw_list {
-            let relative_position = obj.position.camera_relative_f32(camera.position);
-            let model =
-                Mat4::from_scale_rotation_translation(obj.scale, obj.rotation, relative_position);
-            unsafe {
-                builder
-                    .push_constants(
-                        graphics_pipeline.layout().clone(),
-                        0,
-                        ModelPush {
-                            model: model.to_cols_array_2d(),
-                            emissive: obj.emissive,
-                        },
-                    )
-                    .unwrap();
-                builder
-                    .draw(obj.vertex_count as u32, 1, obj.start_vertex as u32, 0)
-                    .unwrap();
+            for obj in &self.draw_list {
+                let relative_position = obj.position.camera_relative_f32(camera.position);
+                let model = Mat4::from_scale_rotation_translation(
+                    obj.scale,
+                    obj.rotation,
+                    relative_position,
+                );
+                unsafe {
+                    builder
+                        .push_constants(
+                            graphics_pipeline.layout().clone(),
+                            0,
+                            ModelPush {
+                                model: model.to_cols_array_2d(),
+                                emissive: obj.emissive,
+                            },
+                        )
+                        .unwrap();
+                    builder
+                        .draw(obj.vertex_count as u32, 1, obj.start_vertex as u32, 0)
+                        .unwrap();
+                }
             }
         }
 
