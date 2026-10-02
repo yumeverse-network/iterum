@@ -71,7 +71,7 @@ Please see `LICENSE` for more detail.
 - [ ] Post Processing (Bloom, Tone Mapping, Color Grading)
 - [ ] Anti-Aliasing (MSAA, FXAA, TAA)
 - [ ] GPU Particles
-- [ ] Physically Based Sky (no skybox)
+- [X] Shader Based Sky (no skybox)
 - [ ] SSR
 - [ ] LOD Dithering
 - [ ] Automatic LODs
