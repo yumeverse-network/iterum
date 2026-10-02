@@ -1,23 +1,52 @@
-use crate::engine::nodes::planet::{Planet, Star};
-use crate::engine::planet;
+use crate::engine::nodes::planet::Star;
+use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
 use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
 use std::sync::Arc;
+use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState};
+use vulkano::pipeline::graphics::vertex_input::VertexInputState;
+use vulkano::swapchain::PresentMode;
+use vulkano::sync::fence::{Fence, FenceCreateFlags, FenceCreateInfo};
+use vulkano::sync::future::FenceSignalFuture;
+use vulkano::sync::semaphore::{Semaphore, SemaphoreCreateInfo};
 use vulkano::{
-    VulkanLibrary, buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer}, command_buffer::{
+    VulkanLibrary,
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, RenderPassBeginInfo,
         SubpassBeginInfo, SubpassContents, SubpassEndInfo,
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-    }, descriptor_set::{
+    },
+    descriptor_set::{
         DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
-    }, device::{
+    },
+    device::{
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
         physical::{PhysicalDevice, PhysicalDeviceType},
-    }, format::Format, image::{Image, ImageUsage, SampleCount, view::ImageView}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
-        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo, graphics::{
-            GraphicsPipelineCreateInfo, color_blend::ColorBlendState, depth_stencil::DepthState, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::{CullMode, FrontFace, RasterizationState}, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState},
-        }, layout::{PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
-    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass}, shader::ShaderStages, swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture},
+    },
+    format::Format,
+    image::{Image, ImageUsage, SampleCount, view::ImageView},
+    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
+    pipeline::{
+        DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
+        graphics::{
+            GraphicsPipelineCreateInfo,
+            color_blend::ColorBlendState,
+            depth_stencil::DepthState,
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::{CullMode, FrontFace, RasterizationState},
+            vertex_input::{Vertex, VertexDefinition},
+            viewport::{Viewport, ViewportState},
+        },
+        layout::{PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+    shader::ShaderStages,
+    swapchain::{self, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
+    sync::{self, GpuFuture},
 };
 
 use crate::engine::Engine;
@@ -28,6 +57,7 @@ use crate::engine::transform::{Transform, WorldPositionExt};
 
 const MAX_VERTICES: u64 = 16_000_000;
 const MAX_LIGHTS: usize = 8;
+const FRAMES_IN_FLIGHT: usize = 2;
 
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
@@ -36,6 +66,15 @@ struct GpuLight {
     _pad0: f32,
     color: [f32; 3],
     power: f32,
+}
+
+struct DrawObject {
+    start_vertex: usize,
+    vertex_count: usize,
+    position: DVec3,
+    rotation: glam::Quat,
+    scale: Vec3,
+    emissive: [f32; 4],
 }
 
 pub struct Renderer {
@@ -49,49 +88,65 @@ pub struct Renderer {
     framebuffers: Vec<Arc<Framebuffer>>,
     command_buffer_allocator: Option<Arc<StandardCommandBufferAllocator>>,
     graphics_pipeline: Option<Arc<GraphicsPipeline>>,
-    vertex_buffer: Option<Subbuffer<[Vertices]>>,
     elapsed: f32,
     recreate_swapchain: bool,
     msaa_samples: SampleCount,
     pending_msaa_samples: Option<SampleCount>,
     descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
+    sky_pipeline: Option<Arc<GraphicsPipeline>>,
+    vertex_buffer: Option<Subbuffer<[Vertices]>>,
+    staging_buffers: Vec<Subbuffer<[Vertices]>>,
+    uploaded_vertex_count: usize,
+    scene_uniforms: Vec<Subbuffer<SceneUniform>>,
+    scene_descriptors: Vec<Arc<DescriptorSet>>,
+    fences: Vec<Arc<Fence>>,
+    image_available: Vec<Arc<Semaphore>>,
+    render_finished: Vec<Arc<Semaphore>>,
+    frame_index: usize,
+    draw_list: Vec<DrawObject>,
+    in_flight: Vec<Option<FenceSignalFuture<Box<dyn GpuFuture>>>>,
 }
 
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
 struct ModelPush {
     model: [[f32; 4]; 4],
-    emissive: [f32; 4]
+    emissive: [f32; 4],
 }
 
-/*
+#[derive(BufferContents, Copy, Clone)]
+#[repr(C)]
+struct SkyPush {
+    sun_direction: [f32; 3],
+    sun_intensity: f32,
+    sun_color: [f32; 3],
+    _pad0: f32,
+    sky_top: [f32; 3],
+    _pad1: f32,
+    sky_bottom: [f32; 3],
+    _pad2: f32,
+    _pad3: [f32; 4],
+    star_density: f32,
+    star_brightness: f32,
+    star_seed: f32,
+    _pad4: f32,
+}
+
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
 struct SceneUniform {
-    //model: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
     projection: [[f32; 4]; 4],
-
-    light_position: [f32; 3],
-    _padding1: f32,
-
-    light_color: [f32; 3],
-    light_power: f32,
-
-    camera_position: [f32; 3],
-    _padding2: f32,
-}*/
-
-#[derive(BufferContents, Copy, Clone)]
-#[repr(C)]
-struct SceneUniform {
-    view: [[f32; 4]; 4],
-    projection: [[f32; 4]; 4],
+    inv_view_proj: [[f32; 4]; 4],
     camera_position: [f32; 3],
     _pad0: f32,
     light_count: u32,
     _pad1: [u32; 3],
     lights: [GpuLight; MAX_LIGHTS],
+    sky_top: [f32; 3],
+    _pad2: f32,
+    sky_bottom: [f32; 3],
+    _pad3: f32,
 }
 
 impl Renderer {
@@ -107,12 +162,23 @@ impl Renderer {
             framebuffers: Vec::new(),
             command_buffer_allocator: None,
             graphics_pipeline: None,
-            vertex_buffer: None,
             elapsed: 0.0,
             recreate_swapchain: false,
             msaa_samples: SampleCount::Sample1,
             pending_msaa_samples: None,
             descriptor_set_allocator: None,
+            sky_pipeline: None,
+            vertex_buffer: None,
+            staging_buffers: Vec::new(),
+            uploaded_vertex_count: 0,
+            scene_uniforms: Vec::new(),
+            scene_descriptors: Vec::new(),
+            fences: Vec::new(),
+            image_available: Vec::new(),
+            render_finished: Vec::new(),
+            frame_index: 0,
+            draw_list: Vec::new(),
+            in_flight: (0..FRAMES_IN_FLIGHT).map(|_| None).collect(),
         }
     }
 
@@ -280,17 +346,35 @@ impl Renderer {
         let vertex_buffer = Buffer::new_slice::<Vertices>(
             memory_allocator.clone(),
             BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
+                usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
             MAX_VERTICES,
         )
         .expect("failed to create vertex buffer");
+
+        let staging_buffers: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Buffer::new_slice::<Vertices>(
+                    memory_allocator.clone(),
+                    BufferCreateInfo {
+                        usage: BufferUsage::TRANSFER_SRC,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    MAX_VERTICES,
+                )
+                .unwrap()
+            })
+            .collect();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             command_buffer_allocator.clone(),
@@ -381,27 +465,19 @@ impl Renderer {
 
         let stages = [vertex_stage, fragment_stage];
 
-        /*let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(stages.iter())
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        )
-        .unwrap();*/
-
         let mut layout_info = PipelineDescriptorSetLayoutCreateInfo::from_stages(stages.iter())
             .into_pipeline_layout_create_info(device.clone())
             .unwrap();
 
         layout_info.push_constant_ranges = vec![PushConstantRange {
-            stages: ShaderStages::VERTEX,
+            stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             offset: 0,
-            size: 80,
+            size: 96,
         }];
 
         let layout = PipelineLayout::new(device.clone(), layout_info).unwrap();
 
-        let mut pipeline_info = GraphicsPipelineCreateInfo::layout(layout);
+        let mut pipeline_info = GraphicsPipelineCreateInfo::layout(layout.clone());
 
         pipeline_info.stages = stages.into_iter().collect();
 
@@ -411,10 +487,6 @@ impl Renderer {
         pipeline_info.input_assembly_state = Some(InputAssemblyState::default());
         pipeline_info.viewport_state = Some(ViewportState::default());
         pipeline_info.dynamic_state.insert(DynamicState::Viewport);
-        /*pipeline_info.rasterization_state = Some(RasterizationState {
-            cull_mode: vulkano::pipeline::graphics::rasterization::CullMode::None,
-            ..Default::default()
-        });*/
         pipeline_info.rasterization_state = Some(RasterizationState {
             cull_mode: CullMode::Back,
             front_face: FrontFace::CounterClockwise,
@@ -439,6 +511,45 @@ impl Renderer {
         let graphics_pipeline = GraphicsPipeline::new(device.clone(), None, pipeline_info)
             .expect("failed to create graphics pipeline");
 
+        let sky_vertex_shader = shaders::sky_vertex::load(device.clone()).unwrap();
+        let sky_fragment_shader = shaders::sky_fragment::load(device.clone()).unwrap();
+        let sky_vert_entry = sky_vertex_shader.entry_point("main").unwrap();
+        let sky_frag_entry = sky_fragment_shader.entry_point("main").unwrap();
+
+        let sky_stages = [
+            PipelineShaderStageCreateInfo::new(sky_vert_entry),
+            PipelineShaderStageCreateInfo::new(sky_frag_entry),
+        ];
+
+        let mut sky_info = GraphicsPipelineCreateInfo::layout(layout);
+        sky_info.stages = sky_stages.into_iter().collect();
+        sky_info.vertex_input_state = Some(VertexInputState::default());
+        sky_info.input_assembly_state = Some(InputAssemblyState::default());
+        sky_info.viewport_state = Some(ViewportState::default());
+        sky_info.dynamic_state.insert(DynamicState::Viewport);
+        sky_info.rasterization_state = Some(RasterizationState {
+            cull_mode: CullMode::None,
+            front_face: FrontFace::CounterClockwise,
+            ..Default::default()
+        });
+        sky_info.multisample_state = Some(MultisampleState::default());
+        sky_info.depth_stencil_state = Some(DepthStencilState {
+            depth: Some(DepthState {
+                write_enable: false,
+                compare_op: CompareOp::Always,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        sky_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
+            1,
+            Default::default(),
+        ));
+        sky_info.subpass = Some(render_pass.clone().first_subpass().into());
+
+        let sky_pipeline = GraphicsPipeline::new(device.clone(), None, sky_info)
+            .expect("failed to create sky pipeline");
+
         let (swapchain, images) = Swapchain::new(
             device.clone(),
             surface.clone(),
@@ -448,6 +559,7 @@ impl Renderer {
                 image_extent: dimensions.into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha,
+                present_mode: PresentMode::Immediate, // Immediate (No Vsync), Mailbox (Vsync- Non blocking), Fifo (Vsync- Blocking), FifoRelaxed (Adaptive Vsync?)
                 ..Default::default()
             },
         )
@@ -500,6 +612,83 @@ impl Renderer {
             Default::default(),
         ));
 
+        let scene_uniforms: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Buffer::from_data(
+                    memory_allocator.clone(),
+                    BufferCreateInfo {
+                        usage: BufferUsage::UNIFORM_BUFFER,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    SceneUniform {
+                        view: [[0.0; 4]; 4],
+                        projection: [[0.0; 4]; 4],
+                        inv_view_proj: [[0.0; 4]; 4],
+                        camera_position: [0.0; 3],
+                        _pad0: 0.0,
+                        light_count: 0,
+                        _pad1: [0; 3],
+                        lights: [GpuLight {
+                            position: [0.0; 3],
+                            _pad0: 0.0,
+                            color: [0.0; 3],
+                            power: 0.0,
+                        }; MAX_LIGHTS],
+                        sky_top: [0.0; 3],
+                        _pad2: 0.0,
+                        sky_bottom: [0.0; 3],
+                        _pad3: 0.0,
+                    },
+                )
+                .unwrap()
+            })
+            .collect();
+
+        let scene_descriptors: Vec<_> = scene_uniforms
+            .iter()
+            .map(|buf| {
+                DescriptorSet::new(
+                    descriptor_set_allocator.clone(),
+                    graphics_pipeline.layout().set_layouts()[0].clone(),
+                    [WriteDescriptorSet::buffer(0, buf.clone())],
+                    [],
+                )
+                .unwrap()
+            })
+            .collect();
+
+        let fences: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Arc::new(
+                    Fence::new(
+                        device.clone(),
+                        FenceCreateInfo {
+                            flags: FenceCreateFlags::SIGNALED,
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap(),
+                )
+            })
+            .collect();
+
+        let image_available: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Arc::new(Semaphore::new(device.clone(), SemaphoreCreateInfo::default()).unwrap())
+            })
+            .collect();
+
+        let render_finished: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Arc::new(Semaphore::new(device.clone(), SemaphoreCreateInfo::default()).unwrap())
+            })
+            .collect();
+
         self.instance = Some(instance);
         self.device = Some(device);
         self.queue = Some(queue);
@@ -512,18 +701,23 @@ impl Renderer {
         self.graphics_pipeline = Some(graphics_pipeline);
         self.vertex_buffer = Some(vertex_buffer);
         self.descriptor_set_allocator = Some(descriptor_set_allocator);
+        self.staging_buffers = staging_buffers;
+        self.scene_uniforms = scene_uniforms;
+        self.scene_descriptors = scene_descriptors;
+        self.fences = fences;
+        self.image_available = image_available;
+        self.render_finished = render_finished;
+        self.sky_pipeline = Some(sky_pipeline);
     }
 
     pub fn render(&mut self, window: &sdl3::video::Window, engine: &mut Engine) {
         if self.recreate_swapchain {
             let dimensions = window.size();
-
             if dimensions.0 == 0 || dimensions.1 == 0 {
                 return;
             }
 
             let old_swapchain = self.swapchain.as_ref().unwrap();
-
             let (new_swapchain, new_images) = old_swapchain
                 .recreate(SwapchainCreateInfo {
                     image_extent: dimensions.into(),
@@ -550,7 +744,6 @@ impl Renderer {
                         AllocationCreateInfo::default(),
                     )
                     .unwrap();
-
                     ImageView::new_default(depth_image).unwrap()
                 })
                 .collect::<Vec<_>>();
@@ -579,31 +772,23 @@ impl Renderer {
             self.rebuild_render_targets(window);
         }
 
-        let command_buffer_allocator = self.command_buffer_allocator.as_ref().unwrap();
-        let queue = self.queue.as_ref().unwrap();
-        let swapchain = self.swapchain.as_ref().unwrap();
-        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
+        let frame = self.frame_index;
+
+        if let Some(prev) = self.in_flight[frame].take() {
+            prev.wait(None).unwrap();
+        }
+
+        let command_buffer_allocator = self.command_buffer_allocator.as_ref().unwrap().clone();
+        let queue = self.queue.as_ref().unwrap().clone();
+        let swapchain = self.swapchain.as_ref().unwrap().clone();
+        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap().clone();
+        let sky_pipeline = self.sky_pipeline.as_ref().unwrap().clone();
 
         let camera = &engine.camera;
-
         let dimensions = swapchain.image_extent();
 
-        /*let position = Vec3::new(
-            camera.position.x as f32,
-            camera.position.y as f32,
-            camera.position.z as f32,
-        );*/
-
         let forward = camera.rotation * Vec3::NEG_Z;
-
-        //let view = glam::camera::rh::view::look_at_mat4(position, position + forward, Vec3::Y);
-        /*let view = glam::camera::rh::view::look_at_mat4(
-            Vec3::ZERO,
-            forward,
-            Vec3::Y,
-        );*/
         let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
-
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
@@ -611,56 +796,21 @@ impl Renderer {
             camera.far,
         );
 
-        // World-space light position.
-        /*for (transform, light) in engine
-            .world
-            .query::<(&Transform, &PointLight)>()
-            .iter(&engine.world)
-        {
-            // light data
-        }*/
-
-        // Convert the light to camera-relative coordinates.
-        /*let (relative_light_position, light_color, light_intensity) = match engine
-            .world
-            .query::<(&Transform, &PointLight)>()
-            .iter(&engine.world)
-            .next()
-        {
-            Some((transform, light)) => (
-                transform.position.camera_relative_f32(camera.position),
-                light.color,
-                light.intensity,
-            ),
-            None => return,
-        };*/
-        
-        /*let (relative_light_position, light_color, light_power) = match engine
-            .world
-            .query::<(&Transform, &Star)>()
-            .iter(&engine.world)
-            .next()
-        {
-            Some((transform, star)) => (
-                transform.position.camera_relative_f32(camera.position),
-                star.color,
-                star.power,
-            ),
-            None => return,
-        };*/
-
         let mut gpu_lights = [GpuLight {
-            position: [0.0; 3], _pad0: 0.0,
-            color: [0.0; 3], power: 0.0,
+            position: [0.0; 3],
+            _pad0: 0.0,
+            color: [0.0; 3],
+            power: 0.0,
         }; MAX_LIGHTS];
-        
         let mut light_count = 0usize;
         for (transform, star) in engine
             .world
             .query::<(&Transform, &Star)>()
             .iter(&engine.world)
         {
-            if light_count >= MAX_LIGHTS { break; }
+            if light_count >= MAX_LIGHTS {
+                break;
+            }
             let p = transform.position.camera_relative_f32(camera.position);
             gpu_lights[light_count] = GpuLight {
                 position: [p.x as f32, p.y as f32, p.z as f32],
@@ -671,16 +821,11 @@ impl Renderer {
             light_count += 1;
         }
 
-        // Clone the Subbuffer
-        let vertex_buffer = self.vertex_buffer.as_ref().unwrap().clone();
-
-        // Update delta time
         let dt = engine.get_delta() as f32;
         self.elapsed += dt;
 
-        let mut vertices = Vec::new();
-        let mut objects = Vec::new(); // (start, count, position, rotation, scale)
-        let mut planet_objects: Vec<(usize, usize, DVec3)> = Vec::new(); // (start, count, planet_pos)
+        let mut vertices: Vec<Vertices> = Vec::new();
+        self.draw_list.clear();
 
         for (transform, mesh, star) in engine
             .world
@@ -689,57 +834,21 @@ impl Renderer {
         {
             let start_vertex = vertices.len();
             vertices.extend_from_slice(&mesh.vertices);
-            objects.push((
+            self.draw_list.push(DrawObject {
                 start_vertex,
-                mesh.vertices.len(),
-                transform.position,
-                transform.rotation,
-                transform.scale,
-                star.map(|s| (s.color, 1.0_f32)),
-            ));
-        }
-
-        // Planets (auto chunking)
-        let screen_h = dimensions[1] as f64;
-
-        for (transform, planet) in engine
-            .world
-            .query::<(&Transform, &Planet)>()
-            .iter(&engine.world)
-        {
-            let chunks = planet::select_chunks(
-                transform.position,
-                planet.radius,
-                camera.position,
-                planet.max_level,
-                4.0,
-                (camera.fov as f64).to_radians(),
-                screen_h,
-            );
-
-            let planet_start = vertices.len();
-
-            for chunk in &chunks {
-                let cm = planet::build_chunk_mesh(
-                    chunk,
-                    transform.position,
-                    planet.radius,
-                    camera.position,
-                    1,
-                );
-                vertices.extend_from_slice(&cm.vertices);
-            }
-
-            let planet_count = vertices.len() - planet_start;
-            if planet_count > 0 {
-                planet_objects.push((planet_start, planet_count, transform.position));
-            }
+                vertex_count: mesh.vertices.len(),
+                position: transform.position,
+                rotation: transform.rotation,
+                scale: transform.scale,
+                emissive: star
+                    .map(|s| [s.color.x, s.color.y, s.color.z, 1.0])
+                    .unwrap_or([0.0; 4]),
+            });
         }
 
         if vertices.is_empty() {
             return;
         }
-
         if vertices.len() as u64 > MAX_VERTICES {
             eprintln!(
                 "Vertex buffer overflow: {} > {}",
@@ -749,35 +858,55 @@ impl Renderer {
             return;
         }
 
-        //let vertex_count = vertices.len() as u32;
-
-        // Write the new vertices into the pre-allocated buffer.
         {
-            let mut writer = vertex_buffer.write().unwrap();
-            let dst = &mut writer[..vertices.len()];
-            dst.copy_from_slice(&vertices);
+            let mut writer = self.staging_buffers[frame].write().unwrap();
+            writer[..vertices.len()].copy_from_slice(&vertices);
+        }
+        let vertex_count = vertices.len();
+
+        {
+            let mut copy_builder = AutoCommandBufferBuilder::primary(
+                self.command_buffer_allocator.as_ref().unwrap().clone(),
+                queue.queue_family_index(),
+                CommandBufferUsage::OneTimeSubmit,
+            )
+            .unwrap();
+
+            copy_builder
+                .copy_buffer(CopyBufferInfo::buffers(
+                    self.staging_buffers[frame]
+                        .clone()
+                        .slice(0..vertex_count as u64),
+                    self.vertex_buffer
+                        .as_ref()
+                        .unwrap()
+                        .clone()
+                        .slice(0..vertex_count as u64),
+                ))
+                .unwrap();
+
+            let copy_cb = copy_builder.build().unwrap();
+
+            sync::now(self.device.as_ref().unwrap().clone())
+                .then_execute(queue.clone(), copy_cb)
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap();
         }
 
-        let draw_buffer = vertex_buffer.slice(0..vertices.len() as u64);
-
-        // Get the next swapchain image.
         let (image_index, _suboptimal, acquire_future) =
             match swapchain::acquire_next_image(swapchain.clone(), None) {
-                Ok(result) => result,
-
+                Ok(r) => r,
                 Err(vulkano::Validated::Error(vulkano::VulkanError::OutOfDate)) => {
                     self.recreate_swapchain = true;
                     return;
                 }
-
-                Err(error) => {
-                    panic!("Failed to acquire swapchain image: {error}");
-                }
+                Err(e) => panic!("acquire image: {e}"),
             };
 
         let framebuffer = self.framebuffers[image_index as usize].clone();
-
-        let dimensions = swapchain.image_extent();
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -785,8 +914,51 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
+        let view_proj = projection * view;
+        let inv_view_proj = view_proj.inverse();
+
+        let (sky_top, sky_bottom) = match engine
+            .world
+            .query::<&GlobalSky>()
+            .iter(&engine.world)
+            .next()
+        {
+            Some(s) => (s.sky_top, s.sky_bottom),
+            None => (Vec3::new(0.05, 0.15, 0.35), Vec3::new(0.4, 0.6, 0.9)),
+        };
+
+        let (star_density, star_brightness, star_seed) = match engine
+            .world
+            .query::<&GlobalSpace>()
+            .iter(&engine.world)
+            .next()
+        {
+            Some(s) => (s.density, s.brightness, s.seed),
+            None => (0.0, 0.0, 0.0),
+        };
+
+        {
+            let mut w = self.scene_uniforms[frame].write().unwrap();
+            *w = SceneUniform {
+                view: view.to_cols_array_2d(),
+                projection: projection.to_cols_array_2d(),
+                inv_view_proj: inv_view_proj.to_cols_array_2d(),
+                camera_position: [0.0, 0.0, 0.0],
+                _pad0: 0.0,
+                light_count: light_count as u32,
+                _pad1: [0; 3],
+                lights: gpu_lights,
+                sky_top: sky_top.to_array(),
+                sky_bottom: sky_bottom.to_array(),
+                _pad2: 0.0,
+                _pad3: 0.0,
+            };
+        }
+
+        let descriptor_set = self.scene_descriptors[frame].clone();
+
         let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator.clone(),
+            command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -795,10 +967,7 @@ impl Renderer {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![
-                        Some([0.02, 0.02, 0.02, 1.0].into()),
-                        Some(1.0f32.into()), // add
-                    ],
+                    clear_values: vec![Some([0.02, 0.02, 0.02, 1.0].into()), Some(1.0f32.into())],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
                 SubpassBeginInfo {
@@ -808,241 +977,105 @@ impl Renderer {
             )
             .unwrap()
             .set_viewport(0, smallvec![viewport])
+            .unwrap();
+
+        let sun_color = if light_count > 0 {
+            gpu_lights[0].color
+        } else {
+            [1.0, 1.0, 1.0]
+        };
+        let sky_push = SkyPush {
+            sun_direction: [0.0, 1.0, 1.0],
+            sun_intensity: 1.0,
+            sun_color,
+            _pad0: 0.0,
+            sky_top: sky_top.to_array(),
+            _pad1: 0.0,
+            sky_bottom: sky_bottom.to_array(),
+            _pad2: 0.0,
+            _pad3: [0.0; 4],
+            star_density,
+            star_brightness,
+            star_seed,
+            _pad4: 0.0,
+        };
+
+        builder
+            .bind_pipeline_graphics(sky_pipeline.clone())
             .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                sky_pipeline.layout().clone(),
+                0,
+                descriptor_set.clone(),
+            )
+            .unwrap();
+
+        unsafe {
+            builder
+                .push_constants(sky_pipeline.layout().clone(), 0, sky_push)
+                .unwrap()
+                .draw(3, 1, 0, 0)
+                .unwrap();
+        }
+
+        let draw_buffer = self
+            .vertex_buffer
+            .as_ref()
+            .unwrap()
+            .clone()
+            .slice(0..vertex_count as u64);
+
+        builder
             .bind_pipeline_graphics(graphics_pipeline.clone())
             .unwrap()
             .bind_vertex_buffers(0, draw_buffer)
-            .unwrap();
-
-        let scene_buffer = Buffer::from_data(
-            self.memory_allocator.as_ref().unwrap().clone(),
-            BufferCreateInfo { usage: BufferUsage::UNIFORM_BUFFER, ..Default::default() },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            /*SceneUniform {
-                view: view.to_cols_array_2d(),
-                projection: projection.to_cols_array_2d(),
-                light_position: [
-                    relative_light_position.x as f32,
-                    relative_light_position.y as f32,
-                    relative_light_position.z as f32,
-                ],
-                _padding1: 0.0,
-                light_color: light_color.to_array(),
-                light_power,
-                camera_position: [0.0, 0.0, 0.0],
-                _padding2: 0.0,
-            },*/
-            SceneUniform {
-                view: view.to_cols_array_2d(),
-                projection: projection.to_cols_array_2d(),
-                camera_position: [0.0, 0.0, 0.0],
-                _pad0: 0.0,
-                light_count: light_count as u32,
-                _pad1: [0; 3],
-                lights: gpu_lights,
-            },
-        ).unwrap();
-
-        let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.as_ref().unwrap().clone(),
-            graphics_pipeline.layout().set_layouts()[0].clone(),
-            [WriteDescriptorSet::buffer(0, scene_buffer)],
-            [],
-        ).unwrap();
-
-        builder
+            .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 graphics_pipeline.layout().clone(),
                 0,
                 descriptor_set,
-            ).unwrap();
+            )
+            .unwrap();
 
-        for (start_vertex, vertex_count, planet_position) in &planet_objects {
-            let relative_position = planet_position.camera_relative_f32(camera.position);
-            let model = Mat4::from_translation(relative_position);
-        
+        for obj in &self.draw_list {
+            let relative_position = obj.position.camera_relative_f32(camera.position);
+            let model =
+                Mat4::from_scale_rotation_translation(obj.scale, obj.rotation, relative_position);
             unsafe {
                 builder
                     .push_constants(
                         graphics_pipeline.layout().clone(),
                         0,
-                        ModelPush { model: model.to_cols_array_2d(), emissive: [0.0; 4], },
+                        ModelPush {
+                            model: model.to_cols_array_2d(),
+                            emissive: obj.emissive,
+                        },
                     )
                     .unwrap();
                 builder
-                    .draw(*vertex_count as u32, 1, *start_vertex as u32, 0)
+                    .draw(obj.vertex_count as u32, 1, obj.start_vertex as u32, 0)
                     .unwrap();
             }
         }
-        
-        for (start_vertex, vertex_count, object_position, rotation, scale, star) in objects {
-            let relative_position = object_position.camera_relative_f32(camera.position);
-            let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
-        
-            let emissive = match star {
-                Some((c, i)) => [c.x, c.y, c.z, i],
-                None => [0.0; 4],
-            };
-        
-            unsafe {
-                builder
-                    .push_constants(
-                        graphics_pipeline.layout().clone(),
-                        0,
-                        ModelPush { model: model.to_cols_array_2d(), emissive },
-                    )
-                    .unwrap();
-                builder
-                    .draw(vertex_count as u32, 1, start_vertex as u32, 0)
-                    .unwrap();
-            }
-        }
-
-        /*for (start_vertex, vertex_count, planet_position) in &planet_objects {
-            let relative_position = planet_position.camera_relative_f32(camera.position);
-
-            let model = Mat4::from_translation(relative_position);
-
-            let scene_buffer = Buffer::from_data(
-                self.memory_allocator.as_ref().unwrap().clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::UNIFORM_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                SceneUniform {
-                    //model: model.to_cols_array_2d(),
-                    view: view.to_cols_array_2d(),
-                    projection: projection.to_cols_array_2d(),
-                    light_position: [
-                        relative_light_position.x as f32,
-                        relative_light_position.y as f32,
-                        relative_light_position.z as f32,
-                    ],
-                    _padding1: 0.0,
-                    light_color: light_color.to_array(),
-                    light_intensity,
-                    camera_position: [0.0, 0.0, 0.0],
-                    _padding2: 0.0,
-                },
-            )
-            .unwrap();
-
-            let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
-                self.device.as_ref().unwrap().clone(),
-                Default::default(),
-            );
-
-            let descriptor_set = DescriptorSet::new(
-                Arc::new(descriptor_set_allocator),
-                graphics_pipeline.layout().set_layouts()[0].clone(),
-                [WriteDescriptorSet::buffer(0, scene_buffer.clone())],
-                [],
-            )
-            .unwrap();
-
-            builder
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    graphics_pipeline.layout().clone(),
-                    0,
-                    descriptor_set,
-                )
-                .unwrap();
-
-            unsafe {
-                builder
-                    .draw(*vertex_count as u32, 1, *start_vertex as u32, 0)
-                    .unwrap();
-            }
-        }*/
-
-        /*for (start_vertex, vertex_count, object_position, rotation, scale) in objects {
-            let relative_position = object_position.camera_relative_f32(camera.position);
-
-            let model = Mat4::from_scale_rotation_translation(scale, rotation, relative_position);
-
-            let scene_buffer = Buffer::from_data(
-                self.memory_allocator.as_ref().unwrap().clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::UNIFORM_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                SceneUniform {
-                    //model: model.to_cols_array_2d(),
-                    view: view.to_cols_array_2d(),
-                    projection: projection.to_cols_array_2d(),
-                    light_position: [
-                        relative_light_position.x as f32,
-                        relative_light_position.y as f32,
-                        relative_light_position.z as f32,
-                    ],
-                    _padding1: 0.0,
-                    light_color: light_color.to_array(),
-                    light_intensity,
-                    camera_position: [0.0, 0.0, 0.0],
-                    _padding2: 0.0,
-                },
-            )
-            .unwrap();
-
-            let descriptor_set_allocator = StandardDescriptorSetAllocator::new(
-                self.device.as_ref().unwrap().clone(),
-                Default::default(),
-            );
-
-            let descriptor_set = DescriptorSet::new(
-                Arc::new(descriptor_set_allocator),
-                graphics_pipeline.layout().set_layouts()[0].clone(),
-                [WriteDescriptorSet::buffer(0, scene_buffer.clone())],
-                [],
-            )
-            .unwrap();
-
-            builder
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    graphics_pipeline.layout().clone(),
-                    0,
-                    descriptor_set,
-                )
-                .unwrap();
-
-            unsafe {
-                builder
-                    .draw(vertex_count as u32, 1, start_vertex as u32, 0)
-                    .unwrap();
-            }
-        }*/
 
         builder.end_render_pass(SubpassEndInfo::default()).unwrap();
-
         let command_buffer = builder.build().unwrap();
 
-        // Submit rendering to GPU, then present the swapchain image.
-        let future = acquire_future
+        let boxed = acquire_future
             .then_execute(queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
                 queue.clone(),
                 SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
-            );
+            )
+            .boxed();
 
-        let _future = future.then_signal_fence_and_flush().unwrap();
+        let future = boxed.then_signal_fence_and_flush().unwrap();
+
+        self.in_flight[frame] = Some(future);
+        self.frame_index = (frame + 1) % FRAMES_IN_FLIGHT;
     }
 
     pub fn request_swapchain_recreation(&mut self) {
@@ -1052,10 +1085,4 @@ impl Renderer {
     fn rebuild_render_targets(&mut self, _window: &sdl3::video::Window) {
         self.recreate_swapchain = true;
     }
-
-    /*pub fn render_player(&mut self, player: &Player, camera: &Camera) -> (f32, f32) {
-        let screen_x = (player.position.x - camera.position.x) as f32;
-        let screen_y = (player.position.y - camera.position.y) as f32;
-        (screen_x, screen_y)
-    }*/
 }

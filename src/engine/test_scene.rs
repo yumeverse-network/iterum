@@ -2,25 +2,36 @@ use bevy_ecs::prelude::*;
 use glam::{DVec3, Quat, Vec3};
 
 use crate::engine::mesh::Mesh;
-use crate::engine::nodes::light::PointLight;
-use crate::engine::nodes::planet::{Planet, Star};
+use crate::engine::nodes::planet::Star;
+use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
 use crate::engine::transform::Transform;
 
 pub fn spawn(world: &mut World) {
+    /*world.spawn(GlobalSky {
+        sky_top: Vec3::new(0.02, 0.08, 0.22),
+        sky_bottom: Vec3::new(0.45, 0.65, 0.95),
+    });*/
+    world.spawn(GlobalSky {
+        sky_top: Vec3::ZERO,
+        sky_bottom: Vec3::ZERO,
+    });
+    world.spawn(GlobalSpace {
+        density: 10.0,
+        brightness: 1.5,
+        seed: 3210.0,
+    });
+
     // Spawn planet
     world.spawn((
         Transform {
             position: DVec3::new(0.0, 0.0, -1.0e9),
             rotation: Quat::IDENTITY,
-            scale: Vec3::ONE,
+            scale: Vec3::splat(6.96e8),
         },
-        Planet {
-            radius: 6.371e8,
-            max_level: 20,
-        },
+        Mesh::icosphere(3),
     ));
 
-    // Spawn star / sun
+    // Spawn star /& sun
     world.spawn((
         Transform {
             position: DVec3::new(-2.0e9, 1.0e2, -1.0e7),
@@ -29,7 +40,7 @@ pub fn spawn(world: &mut World) {
         },
         Mesh::icosphere(3),
         Star {
-            color: Vec3::new(1.0, 0.95, 0.85),
+            color: Vec3::new(1.0, 1.0, 1.0),
             power: 4.0e18,
         },
     ));
@@ -41,7 +52,7 @@ pub fn spawn(world: &mut World) {
         },
         Mesh::icosphere(3),
         Star {
-            color: Vec3::new(0.9, 0.1, 0.0),
+            color: Vec3::new(1.9, 0.1, 0.0),
             power: 2.0e18,
         },
     ));
@@ -53,7 +64,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::cube()
+        Mesh::cube(),
     ));
 
     world.spawn((
@@ -62,7 +73,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::icosphere(6)
+        Mesh::icosphere(6),
     ));
 
     world.spawn((
@@ -71,7 +82,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::plane()
+        Mesh::plane(),
     ));
 
     world.spawn((
@@ -80,7 +91,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::triangle()
+        Mesh::triangle(),
     ));
 
     world.spawn((
@@ -89,7 +100,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::circle(6, 1.0)
+        Mesh::circle(6, 1.0),
     ));
 
     world.spawn((
@@ -98,7 +109,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::cylinder(6, 1.0, 1.0)
+        Mesh::cylinder(6, 1.0, 1.0),
     ));
 
     world.spawn((
@@ -107,7 +118,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::tube(6, 1.0, 1.0, 0.2)
+        Mesh::tube(6, 1.0, 1.0, 0.2),
     ));
 
     world.spawn((
@@ -116,7 +127,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::disc(6, 1.0)
+        Mesh::disc(6, 1.0),
     ));
 
     world.spawn((
@@ -125,7 +136,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::cone(6, 1.0)
+        Mesh::cone(6, 1.0),
     ));
 
     world.spawn((
@@ -134,7 +145,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::prism(1.0)
+        Mesh::prism(1.0),
     ));
 
     world.spawn((
@@ -143,7 +154,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::pyramid()
+        Mesh::pyramid(),
     ));
 
     world.spawn((
@@ -152,7 +163,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::uv_sphere(6, 6, 1.0)
+        Mesh::uv_sphere(6, 6, 1.0),
     ));
 
     world.spawn((
@@ -161,7 +172,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::hemisphere(6, 6, 1.0)
+        Mesh::hemisphere(6, 6, 1.0),
     ));
 
     world.spawn((
@@ -170,20 +181,7 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::capsule(6, 6, 1.0, 2.0)
-    ));
-
-    // Spawn point light
-    world.spawn((
-        Transform {
-            position: DVec3::new(0.0, 0.0, 0.0),
-            rotation: Quat::IDENTITY,
-            scale: Vec3::ONE,
-        },
-        PointLight {
-            color: Vec3::ONE,
-            intensity: 1.0,
-        }
+        Mesh::capsule(6, 6, 1.0, 2.0),
     ));
 
     world.spawn((
@@ -192,6 +190,6 @@ pub fn spawn(world: &mut World) {
             rotation: Quat::IDENTITY,
             scale: Vec3::new(100.0, 1.0, 100.0),
         },
-        Mesh::cube()
+        Mesh::cube(),
     ));
 }

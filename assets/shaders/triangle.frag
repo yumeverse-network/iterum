@@ -16,6 +16,7 @@ struct Light {
 layout(std140, set = 0, binding = 0) uniform Scene {
     mat4 view;
     mat4 projection;
+    mat4 inv_view_proj;
     vec3 camera_position;
     float _pad0;
     uint light_count;
@@ -23,6 +24,10 @@ layout(std140, set = 0, binding = 0) uniform Scene {
     uint _pad1b;
     uint _pad1c;
     Light lights[MAX_LIGHTS];
+    vec3 sky_top;
+    float _pad2;
+    vec3 sky_bottom;
+    float _pad3;
 };
 
 layout(location = 0) out vec4 f_color;
@@ -37,8 +42,21 @@ void main() {
         vec3 N = normalize(frag_normal);
         vec3 V = normalize(-frag_position);
 
+        /*vec3 base_color = vec3(1.0, 0.1, 0.6);
+        color = base_color * vec3(0.05);*/
+
         vec3 base_color = vec3(1.0, 0.1, 0.6);
-        color = base_color * vec3(0.05);
+        
+        vec3 sky_luma = vec3(dot(sky_top, vec3(0.2126, 0.7152, 0.0722)));
+        vec3 ambient_sky = mix(sky_top, sky_luma, 0.75) * 1.6;      // pale, bright
+        
+        vec3 ground_luma = vec3(dot(sky_bottom, vec3(0.2126, 0.7152, 0.0722)));
+        vec3 ambient_ground = mix(sky_bottom, ground_luma, 0.6) * 0.4;
+        
+        float hemi = N.y * 0.5 + 0.5;
+        vec3 ambient_color = mix(ambient_ground, ambient_sky, hemi);
+        
+        color = base_color * ambient_color;
 
         for (uint i = 0u; i < light_count; i++) {
             Light l = lights[i];

@@ -4,23 +4,21 @@ pub mod camera;
 pub mod console;
 pub mod emath;
 pub mod fps;
+pub mod fs_utils;
 pub mod mesh;
 pub mod player;
 pub mod renderer;
-pub mod window;
-pub mod fs_utils;
 pub mod shaders;
 pub mod transform;
-
-pub mod planet;
+pub mod window;
 
 pub mod input;
 pub mod nodes;
 
 pub mod test_scene;
 
-use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
+use std::time::{Duration, Instant};
 
 pub use crate::engine::camera::Camera;
 pub use console::Console;
@@ -58,7 +56,7 @@ impl Engine {
             running: true,
             camera,
             world,
-            frame_limit: FrameLimit::_Capped(60),
+            frame_limit: FrameLimit::_Capped(0),
             delta_time: Duration::ZERO,
             last_frame: Instant::now(),
             _on_update: None,

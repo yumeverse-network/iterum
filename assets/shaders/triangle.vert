@@ -15,6 +15,7 @@ struct Light {
 layout(std140, set = 0, binding = 0) uniform Scene {
     mat4 view;
     mat4 projection;
+    mat4 inv_view_proj;
     vec3 camera_position;
     float _pad0;
     uint light_count;
@@ -22,6 +23,10 @@ layout(std140, set = 0, binding = 0) uniform Scene {
     uint _pad1b;
     uint _pad1c;
     Light lights[MAX_LIGHTS];
+    vec3 sky_top;
+    float _pad2;
+    vec3 sky_bottom;
+    float _pad3;
 };
 
 layout(push_constant) uniform Push {
