@@ -85,6 +85,7 @@ Please see `LICENSE` for more detail.
 - [ ] Shader Hot Reload
 - [ ] Async Asset Streaming
 - [ ] World Streaming (world LODs)
+- [ ] Multi Bounce AO
 
 ### Animation
 
@@ -124,11 +125,12 @@ Please see `LICENSE` for more detail.
 
 ### Platforms
 
-- [ ] Windows x86_64 (Not Tested)
+- [ ] Windows x86_64 (Broken)
 - [ ] Windows Arm64 (Considering)
 - [X] Linux x86_64
 - [ ] Linux Arm64 (Not Tested)
-- [X] macOS - MoltenVK
+- [ ] macOS - MoltenVK (Broken)
+- [ ] macOS - Native (Considering)
 
 ## Installation
 
