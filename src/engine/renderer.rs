@@ -561,7 +561,7 @@ impl Renderer {
             PipelineShaderStageCreateInfo::new(sky_vert_entry),
             PipelineShaderStageCreateInfo::new(sky_frag_entry),
         ];
-
+        
         let mut sky_info = GraphicsPipelineCreateInfo::layout(layout);
         sky_info.stages = sky_stages.into_iter().collect();
         sky_info.vertex_input_state = Some(VertexInputState::default());
@@ -1047,6 +1047,7 @@ impl Renderer {
         } else {
             [1.0, 1.0, 1.0]
         };
+        
         let sky_push = SkyPush {
             sun_direction: [0.0, 1.0, 1.0],
             sun_intensity: 1.0,
