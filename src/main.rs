@@ -17,12 +17,13 @@ fn main() {
     let logger = engine::console::Console::new();
     let math = engine::emath::EMath::new();
     let mut fps = engine::fps::FpsCounter::new();
-    let mut winman = engine::window::Window::new();
-    let mut renderer = engine::renderer::Renderer::new();
+    let mut winman = engine::render::window::Window::new();
+    let mut renderer = engine::render::renderer::Renderer::new();
     let mut input = InputManager::new();
     let mut player = engine::player::Player::new();
 
     engine.init();
+    engine.init_world();
 
     logger.log("Helloooo");
 
@@ -158,7 +159,7 @@ fn main() {
         let mut dy = 0.0;
 
         if input.is_action_pressed("speedup") {
-            speed = 2.0e10;
+            speed = 2.0e10; // 3.4028234663852886e38 is max speed tested
         } else {
             speed = 10.0;
         }

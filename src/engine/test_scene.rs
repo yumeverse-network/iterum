@@ -4,9 +4,10 @@ use glam::{DVec3, Quat, Vec3};
 use crate::engine::mesh::Mesh;
 use crate::engine::nodes::planet::Star;
 use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
+use crate::engine::physics::{Physics, PhysicsWorld, Shape};
 use crate::engine::transform::Transform;
 
-pub fn spawn(world: &mut World) {
+pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     /*world.spawn(GlobalSky {
         sky_top: Vec3::new(0.02, 0.08, 0.22),
         sky_bottom: Vec3::new(0.45, 0.65, 0.95),
@@ -192,4 +193,58 @@ pub fn spawn(world: &mut World) {
         },
         Mesh::cube(),
     ));
+
+    // 
+    // PHYSICS
+    // 
+    physics.spawn(
+        world,
+        Transform {
+            position: DVec3::new(0.0, -2.5, 0.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::new(100.0, 1.0, 100.0),
+        },
+        Mesh::cube(),
+        Physics::fixed(Shape::CUBE),
+    );
+    
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(0.0, 3.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Mesh::cube(),
+        Physics::dynamic(Shape::CUBE),
+    );
+    
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(2.5, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Mesh::icosphere(3),
+        Physics::dynamic(Shape::SPHERE).restitution(0.8),
+    );
+    
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(-2.5, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Mesh::capsule(6, 6, 1.0, 2.0),
+        Physics::dynamic(Shape::Capsule { radius: 1.0, height: 2.0 }),
+    );
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(5.0, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Mesh::cone(6, 1.0),
+        Physics::dynamic(Shape::Cone { radius: 1.0 }),
+    );
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(5.0, 10.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Mesh::cylinder(6, 1.0, 1.0),
+        Physics::dynamic(Shape::Cylinder { radius: 1.0, half_depth: 1.0 }),
+    );
+    
+    physics.spawn(
+        world,
+        Transform { position: DVec3::new(0.0, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::splat(0.5) },
+        Mesh::pyramid(),
+        Physics::dynamic(Shape::ConvexHull),
+    );
 }

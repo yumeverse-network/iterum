@@ -74,7 +74,8 @@ vec3 star_layer(vec3 dir, float density, float brightness, float seed) {
     vec3 p = dir * density + vec3(seed);
     vec3 base = floor(p);
 
-    float aa = length(fwidth(p)) * 0.5;
+    //float aa = length(fwidth(p)) * 0.5;
+    float aa = length(fwidth(dir)) * density * 0.5;
 
     vec3 result = vec3(0.0);
 
@@ -89,7 +90,8 @@ vec3 star_layer(vec3 dir, float density, float brightness, float seed) {
         vec3 star_pos = cell + rnd;
         float d = length(p - star_pos);
 
-        float radius = max(0.03 + rnd.z * 0.05, aa);
+        //float radius = max(0.03 + rnd.z * 0.05, aa);
+        float radius = min(max(0.03 + rnd.z * 0.05, aa), 0.12);
         float star = smoothstep(radius, 0.0, d);
         star *= star;
 

@@ -52,7 +52,7 @@ use vulkano::{
 use crate::engine::Engine;
 use crate::engine::console;
 use crate::engine::mesh::{Mesh, Vertices};
-use crate::engine::shaders;
+use crate::engine::render::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
 const MAX_VERTICES: u64 = 16_000_000;
@@ -884,6 +884,10 @@ impl Renderer {
             .iter(&engine.world)
         {
             let rel = transform.position.camera_relative_f32(camera.position);
+            if !rel.is_finite() || !transform.rotation.is_finite() || !transform.scale.is_finite() {
+                continue;
+            }
+            
             let world_center = rel + transform.rotation * (mesh.bounds.center * transform.scale);
             let world_radius = mesh.bounds.radius * transform.scale.abs().max_element();
 
