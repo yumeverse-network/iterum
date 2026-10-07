@@ -104,8 +104,6 @@ impl Engine {
         if let Some(ref mut callback) = self._on_update {
             callback();
         }
-
-        self.step_physics();
     }
 
     fn step_physics(&mut self) {
@@ -139,6 +137,8 @@ impl Engine {
         let dt = now - self.last_frame;
         self.delta_time = dt.min(Duration::from_secs_f64(0.1));
         self.last_frame = now;
+
+        self.step_physics();
     }
 
     pub fn get_delta(&self) -> f64 {
