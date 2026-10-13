@@ -126,7 +126,6 @@ Please see `LICENSE` for more detail.
 ### Platforms
 
 - [ ] Windows x86_64 (Broken)
-- [ ] Windows Arm64 (Considering)
 - [X] Linux x86_64
 - [ ] Linux Arm64 (Not Tested)
 - [X] macOS - MoltenVK
