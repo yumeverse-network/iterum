@@ -1,8 +1,13 @@
 use MathUtils;
 use bevy_ecs::prelude::*;
 use glam::{DVec3, Vec3};
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
+
+/// Monotonic id source for meshes. Starts at 1 so 0 can mean "invalid".
+static NEXT_MESH_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
@@ -12,6 +17,41 @@ pub struct Vertices {
 
     #[format(R32G32B32_SFLOAT)]
     pub normal: [f32; 3],
+}
+
+/// Bit pattern of an f32 used for hashing/equality. -0.0 is folded into +0.0
+/// so that two vertices that compare equal numerically also dedup together.
+#[inline]
+fn f32_key(f: f32) -> u32 {
+    if f == 0.0 { 0 } else { f.to_bits() }
+}
+
+impl Vertices {
+    #[inline]
+    fn key(&self) -> [u32; 6] {
+        [
+            f32_key(self.position[0]),
+            f32_key(self.position[1]),
+            f32_key(self.position[2]),
+            f32_key(self.normal[0]),
+            f32_key(self.normal[1]),
+            f32_key(self.normal[2]),
+        ]
+    }
+}
+
+impl PartialEq for Vertices {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for Vertices {}
+
+impl Hash for Vertices {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key().hash(state);
+    }
 }
 
 /// Shared vertex helper (replaces the copy-pasted inner `fn v` in every constructor).
@@ -54,15 +94,41 @@ impl Bounds {
 
 #[derive(Component)]
 pub struct Mesh {
+    pub id: u64,
+    /// Unique vertices only (deduplicated in `Mesh::new`).
     pub vertices: Vec<Vertices>,
+    /// Triangle-list indices into `vertices` (mesh-local, starting at 0).
+    pub indices: Vec<u32>,
     pub bounds: Bounds,
 }
 
 impl Mesh {
-    /// Every constructor goes through this, so bounds are always computed.
+    /// Every constructor goes through this, so bounds are always computed,
+    /// every mesh gets a unique id, and the triangle-expanded vertex list
+    /// is automatically deduplicated into (unique vertices, indices).
     pub fn new(vertices: Vec<Vertices>) -> Self {
-        let bounds = Bounds::from_vertices(&vertices);
-        Self { vertices, bounds }
+        let mut lookup: std::collections::HashMap<Vertices, u32> =
+            std::collections::HashMap::with_capacity(vertices.len());
+        let mut unique: Vec<Vertices> = Vec::new();
+        let mut indices: Vec<u32> = Vec::with_capacity(vertices.len());
+
+        for vert in vertices {
+            let index = *lookup.entry(vert).or_insert_with(|| {
+                unique.push(vert);
+                (unique.len() - 1) as u32
+            });
+            indices.push(index);
+        }
+
+        unique.shrink_to_fit();
+
+        let bounds = Bounds::from_vertices(&unique);
+        Self {
+            id: NEXT_MESH_ID.fetch_add(1, Ordering::Relaxed),
+            vertices: unique,
+            indices,
+            bounds,
+        }
     }
 
     // Cube
@@ -134,7 +200,6 @@ impl Mesh {
             DVec3::new(-t, 0.0, 1.0),
         ];
 
-        // Normalize the initial icosahedron onto the unit sphere.
         for position in &mut positions {
             *position = position.normalize();
         }
@@ -162,7 +227,6 @@ impl Mesh {
             [9, 8, 1],
         ];
 
-        // Subdivide every triangle.
         for _ in 0..subdivisions {
             let mut next_triangles = Vec::with_capacity(triangles.len() * 4);
             let mut midpoint_cache = HashMap::<(u32, u32), u32>::new();
@@ -202,7 +266,6 @@ impl Mesh {
             triangles = next_triangles;
         }
 
-        // Convert indexed triangles into the vertex format.
         let mut vertices = Vec::with_capacity(triangles.len() * 3);
 
         for [a, b, c] in triangles {
@@ -349,7 +412,6 @@ impl Mesh {
             verts.push(v(p2_top, p2.normalize()));
             verts.push(v(p3_top, p3.normalize()));
 
-            // Inner to outer
             // Top ring
             verts.push(v(p0_top, DVec3::Z));
             verts.push(v(p1_top, DVec3::Z));
@@ -601,7 +663,6 @@ impl Mesh {
             }
         }
 
-        // Base cap: now emitted once, after the ring loop (was inside it before).
         let center = DVec3::new(0.0, -0.5, 0.0);
         let down = DVec3::new(0.0, -1.0, 0.0);
 
@@ -627,8 +688,8 @@ impl Mesh {
         let half_height = height / 2.0;
 
         for i in 0..rings {
-            let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64; // Up
-            let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64; // Up
+            let phi0 = (MathUtils::PI / 2.0) * i as f64 / rings as f64;
+            let phi1 = (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64;
             let phi2 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0) * i as f64 / rings as f64;
             let phi3 = MathUtils::PI / 2.0 + (MathUtils::PI / 2.0) * (i + 1) as f64 / rings as f64;
 
@@ -636,7 +697,6 @@ impl Mesh {
                 let theta0 = 2.0 * MathUtils::PI * j as f64 / segments as f64;
                 let theta1 = 2.0 * MathUtils::PI * (j + 1) as f64 / segments as f64;
 
-                // Normals bottom
                 let n_b0 = DVec3::new(
                     phi2.sin() * theta0.cos(),
                     phi2.cos(),
@@ -658,7 +718,6 @@ impl Mesh {
                     phi3.sin() * theta1.sin(),
                 );
 
-                // Normals top
                 let n_t0 = DVec3::new(
                     phi0.sin() * theta0.cos(),
                     phi0.cos(),

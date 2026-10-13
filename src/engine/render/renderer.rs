@@ -56,6 +56,7 @@ use crate::engine::render::shaders;
 use crate::engine::transform::{Transform, WorldPositionExt};
 
 const MAX_VERTICES: u64 = 16_000_000;
+const MAX_INDICES: u64 = 48_000_000;
 const MAX_LIGHTS: usize = 8;
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -69,8 +70,9 @@ struct GpuLight {
 }
 
 struct DrawObject {
-    start_vertex: usize,
-    vertex_count: usize,
+    base_vertex: u32,
+    base_index: u32,
+    index_count: u32,
     position: DVec3,
     rotation: glam::Quat,
     scale: Vec3,
@@ -144,8 +146,14 @@ pub struct Renderer {
     descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
     sky_pipeline: Option<Arc<GraphicsPipeline>>,
     vertex_buffer: Option<Subbuffer<[Vertices]>>,
+    index_buffer: Option<Subbuffer<[u32]>>,
     staging_buffers: Vec<Subbuffer<[Vertices]>>,
+    index_staging_buffers: Vec<Subbuffer<[u32]>>,
     uploaded_vertex_count: usize,
+    mesh_allocs: std::collections::HashMap<u64, (u32, u32)>,
+    index_allocs: std::collections::HashMap<u64, (u32, u32)>, // mesh_id -> (base_index, index_count)
+    next_free_vertex: u32,
+    next_free_index: u32,
     scene_uniforms: Vec<Subbuffer<SceneUniform>>,
     scene_descriptors: Vec<Arc<DescriptorSet>>,
     fences: Vec<Arc<Fence>>,
@@ -219,8 +227,14 @@ impl Renderer {
             descriptor_set_allocator: None,
             sky_pipeline: None,
             vertex_buffer: None,
+            index_buffer: None,
             staging_buffers: Vec::new(),
+            index_staging_buffers: Vec::new(),
             uploaded_vertex_count: 0,
+            mesh_allocs: std::collections::HashMap::new(),
+            index_allocs: std::collections::HashMap::new(),
+            next_free_vertex: 0,
+            next_free_index: 0,
             scene_uniforms: Vec::new(),
             scene_descriptors: Vec::new(),
             fences: Vec::new(),
@@ -407,6 +421,20 @@ impl Renderer {
         )
         .expect("failed to create vertex buffer");
 
+        let index_buffer = Buffer::new_slice::<u32>(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                ..Default::default()
+            },
+            MAX_INDICES,
+        )
+        .expect("failed to create index buffer");
+
         let staging_buffers: Vec<_> = (0..FRAMES_IN_FLIGHT)
             .map(|_| {
                 Buffer::new_slice::<Vertices>(
@@ -421,6 +449,25 @@ impl Renderer {
                         ..Default::default()
                     },
                     MAX_VERTICES,
+                )
+                .unwrap()
+            })
+            .collect();
+
+        let index_staging_buffers: Vec<_> = (0..FRAMES_IN_FLIGHT)
+            .map(|_| {
+                Buffer::new_slice::<u32>(
+                    memory_allocator.clone(),
+                    BufferCreateInfo {
+                        usage: BufferUsage::TRANSFER_SRC,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo {
+                        memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    MAX_INDICES,
                 )
                 .unwrap()
             })
@@ -751,8 +798,10 @@ impl Renderer {
         self.command_buffer_allocator = Some(command_buffer_allocator);
         self.graphics_pipeline = Some(graphics_pipeline);
         self.vertex_buffer = Some(vertex_buffer);
+        self.index_buffer = Some(index_buffer);
         self.descriptor_set_allocator = Some(descriptor_set_allocator);
         self.staging_buffers = staging_buffers;
+        self.index_staging_buffers = index_staging_buffers;
         self.scene_uniforms = scene_uniforms;
         self.scene_descriptors = scene_descriptors;
         self.fences = fences;
@@ -761,7 +810,92 @@ impl Renderer {
         self.sky_pipeline = Some(sky_pipeline);
     }
 
-    pub fn render(&mut self, window: &winit::window::Window, engine: &mut Engine) { // &sdl3::video::Window
+    pub fn upload_mesh(&mut self, mesh: &Mesh) {
+        if self.mesh_allocs.contains_key(&mesh.id) && self.index_allocs.contains_key(&mesh.id) {
+            return;
+        }
+
+        let vertex_count = mesh.vertices.len() as u32;
+        let index_count = mesh.indices.len() as u32;
+
+        if vertex_count == 0 || index_count == 0 {
+            self.mesh_allocs.insert(mesh.id, (0, 0));
+            self.index_allocs.insert(mesh.id, (0, 0));
+            return;
+        }
+
+        let base_vertex = self.next_free_vertex;
+        let base_index = self.next_free_index;
+
+        assert!(
+            base_vertex as u64 + vertex_count as u64 <= MAX_VERTICES,
+            "vertex pool overflow: {} + {} > {}",
+            base_vertex,
+            vertex_count,
+            MAX_VERTICES
+        );
+        assert!(
+            base_index as u64 + index_count as u64 <= MAX_INDICES,
+            "index pool overflow: {} + {} > {}",
+            base_index,
+            index_count,
+            MAX_INDICES
+        );
+
+        {
+            let mut w = self.staging_buffers[0].write().unwrap();
+            w[..vertex_count as usize].copy_from_slice(&mesh.vertices);
+        }
+        {
+            let mut w = self.index_staging_buffers[0].write().unwrap();
+            w[..index_count as usize].copy_from_slice(&mesh.indices);
+        }
+
+        let mut b = AutoCommandBufferBuilder::primary(
+            self.command_buffer_allocator.as_ref().unwrap().clone(),
+            self.queue.as_ref().unwrap().queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        b.copy_buffer(CopyBufferInfo::buffers(
+            self.staging_buffers[0].clone().slice(0..vertex_count as u64),
+            self.vertex_buffer
+                .as_ref()
+                .unwrap()
+                .clone()
+                .slice(base_vertex as u64..(base_vertex + vertex_count) as u64),
+        ))
+        .unwrap();
+
+        b.copy_buffer(CopyBufferInfo::buffers(
+            self.index_staging_buffers[0]
+                .clone()
+                .slice(0..index_count as u64),
+            self.index_buffer
+                .as_ref()
+                .unwrap()
+                .clone()
+                .slice(base_index as u64..(base_index + index_count) as u64),
+        ))
+        .unwrap();
+
+        let cb = b.build().unwrap();
+        sync::now(self.device.as_ref().unwrap().clone())
+            .then_execute(self.queue.as_ref().unwrap().clone(), cb)
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        self.mesh_allocs.insert(mesh.id, (base_vertex, vertex_count));
+        self.index_allocs.insert(mesh.id, (base_index, index_count));
+        self.next_free_vertex += vertex_count;
+        self.next_free_index += index_count;
+    }
+
+    pub fn render(&mut self, window: &winit::window::Window, engine: &mut Engine) {
         if self.recreate_swapchain {
             let mut dimensions = logical_extent(window);
             if dimensions[0] == 0 || dimensions[1] == 0 {
@@ -853,11 +987,6 @@ impl Renderer {
 
         let forward = camera.rotation * Vec3::NEG_Z;
 
-        //let eye = camera.position.as_vec3();
-        //let center = eye + forward;
-        //let view = glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
-        //let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
-
         let projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
@@ -898,7 +1027,14 @@ impl Renderer {
         let view_proj = projection * view_rel;
         let frustum = Frustum::from_view_proj(view_proj, view_rel);
 
-        let mut vertices: Vec<Vertices> = Vec::new();
+        for mesh in engine.world.query::<&Mesh>().iter(&engine.world) {
+            if !self.mesh_allocs.contains_key(&mesh.id)
+                || !self.index_allocs.contains_key(&mesh.id)
+            {
+                self.upload_mesh(mesh);
+            }
+        }
+
         self.draw_list.clear();
 
         for (transform, mesh, star) in engine
@@ -910,7 +1046,7 @@ impl Renderer {
             if !rel.is_finite() || !transform.rotation.is_finite() || !transform.scale.is_finite() {
                 continue;
             }
-            
+
             let world_center = rel + transform.rotation * (mesh.bounds.center * transform.scale);
             let world_radius = mesh.bounds.radius * transform.scale.abs().max_element();
 
@@ -918,11 +1054,21 @@ impl Renderer {
                 continue;
             }
 
-            let start_vertex = vertices.len();
-            vertices.extend_from_slice(&mesh.vertices);
+            let Some(&(base_vertex, vertex_count)) = self.mesh_allocs.get(&mesh.id) else {
+                continue;
+            };
+            let Some(&(base_index, index_count)) = self.index_allocs.get(&mesh.id) else {
+                continue;
+            };
+
+            if vertex_count == 0 || index_count == 0 {
+                continue;
+            }
+
             self.draw_list.push(DrawObject {
-                start_vertex,
-                vertex_count: mesh.vertices.len(),
+                base_vertex,
+                base_index,
+                index_count,
                 position: transform.position,
                 rotation: transform.rotation,
                 scale: transform.scale,
@@ -930,60 +1076,6 @@ impl Renderer {
                     .map(|s| [s.color.x, s.color.y, s.color.z, 1.0])
                     .unwrap_or([0.0; 4]),
             });
-        }
-
-        /*println!(
-            "DEBUG: Visible objects = {}, Total vertices = {}",
-            self.draw_list.len(),
-            vertices.len()
-        );*/
-
-        if vertices.len() as u64 > MAX_VERTICES {
-            eprintln!(
-                "Vertex buffer overflow: {} > {}",
-                vertices.len(),
-                MAX_VERTICES
-            );
-            return;
-        }
-
-        let vertex_count = vertices.len();
-
-        if vertex_count > 0 {
-            {
-                let mut writer = self.staging_buffers[frame].write().unwrap();
-                writer[..vertex_count].copy_from_slice(&vertices);
-            }
-
-            let mut copy_builder = AutoCommandBufferBuilder::primary(
-                self.command_buffer_allocator.as_ref().unwrap().clone(),
-                queue.queue_family_index(),
-                CommandBufferUsage::OneTimeSubmit,
-            )
-            .unwrap();
-
-            copy_builder
-                .copy_buffer(CopyBufferInfo::buffers(
-                    self.staging_buffers[frame]
-                        .clone()
-                        .slice(0..vertex_count as u64),
-                    self.vertex_buffer
-                        .as_ref()
-                        .unwrap()
-                        .clone()
-                        .slice(0..vertex_count as u64),
-                ))
-                .unwrap();
-
-            let copy_cb = copy_builder.build().unwrap();
-
-            sync::now(self.device.as_ref().unwrap().clone())
-                .then_execute(queue.clone(), copy_cb)
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
-                .unwrap();
         }
 
         let (image_index, _suboptimal, acquire_future) =
@@ -1004,7 +1096,6 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
-        //let view_proj = projection * view;
         let inv_view_proj = view_proj.inverse();
 
         let (sky_top, sky_bottom) = match engine
@@ -1110,18 +1201,13 @@ impl Renderer {
                 .unwrap();
         }
 
-        if vertex_count > 0 {
-            let draw_buffer = self
-                .vertex_buffer
-                .as_ref()
-                .unwrap()
-                .clone()
-                .slice(0..vertex_count as u64);
-
+        if !self.draw_list.is_empty() {
             builder
                 .bind_pipeline_graphics(graphics_pipeline.clone())
                 .unwrap()
-                .bind_vertex_buffers(0, draw_buffer)
+                .bind_vertex_buffers(0, self.vertex_buffer.as_ref().unwrap().clone())
+                .unwrap()
+                .bind_index_buffer(self.index_buffer.as_ref().unwrap().clone())
                 .unwrap()
                 .bind_descriptor_sets(
                     PipelineBindPoint::Graphics,
@@ -1150,7 +1236,13 @@ impl Renderer {
                         )
                         .unwrap();
                     builder
-                        .draw(obj.vertex_count as u32, 1, obj.start_vertex as u32, 0)
+                        .draw_indexed(
+                            obj.index_count,
+                            1,
+                            obj.base_index,
+                            obj.base_vertex as i32,
+                            0,
+                        )
                         .unwrap();
                 }
             }
@@ -1178,7 +1270,7 @@ impl Renderer {
         self.recreate_swapchain = true;
     }
 
-    fn rebuild_render_targets(&mut self, _window: &winit::window::Window) { // &sdl3::video::Window
+    fn rebuild_render_targets(&mut self, _window: &winit::window::Window) {
         self.recreate_swapchain = true;
     }
 }
