@@ -34,7 +34,6 @@ chrono = "0.4.45" # Time
 vulkano = "0.35.2" # Surface rendering
 vulkano-shaders = "0.35.0" # Shadersssss
 raw-window-handle = "0.6.2" # Huh
-#sdl3 = { version = "0", features = ["raw-window-handle"] } # Window & Input
 winit = "0.30.13" # Window & desktop input
 bevy_ecs = "0.19.0" # ECS
 rapier3d-f64 = { version = "0.36", features = ["parallel"] } # Physics engine
