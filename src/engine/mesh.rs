@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
-/// Monotonic id source for meshes. Starts at 1 so 0 can mean "invalid".
 static NEXT_MESH_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
@@ -19,8 +18,6 @@ pub struct Vertices {
     pub normal: [f32; 3],
 }
 
-/// Bit pattern of an f32 used for hashing/equality. -0.0 is folded into +0.0
-/// so that two vertices that compare equal numerically also dedup together.
 #[inline]
 fn f32_key(f: f32) -> u32 {
     if f == 0.0 { 0 } else { f.to_bits() }
@@ -54,7 +51,6 @@ impl Hash for Vertices {
     }
 }
 
-/// Shared vertex helper (replaces the copy-pasted inner `fn v` in every constructor).
 fn v(position: DVec3, normal: DVec3) -> Vertices {
     Vertices {
         position: position.as_vec3().to_array(),
@@ -95,17 +91,12 @@ impl Bounds {
 #[derive(Component)]
 pub struct Mesh {
     pub id: u64,
-    /// Unique vertices only (deduplicated in `Mesh::new`).
     pub vertices: Vec<Vertices>,
-    /// Triangle-list indices into `vertices` (mesh-local, starting at 0).
     pub indices: Vec<u32>,
     pub bounds: Bounds,
 }
 
 impl Mesh {
-    /// Every constructor goes through this, so bounds are always computed,
-    /// every mesh gets a unique id, and the triangle-expanded vertex list
-    /// is automatically deduplicated into (unique vertices, indices).
     pub fn new(vertices: Vec<Vertices>) -> Self {
         let mut lookup: std::collections::HashMap<Vertices, u32> =
             std::collections::HashMap::with_capacity(vertices.len());

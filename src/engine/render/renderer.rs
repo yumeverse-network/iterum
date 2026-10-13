@@ -151,7 +151,7 @@ pub struct Renderer {
     index_staging_buffers: Vec<Subbuffer<[u32]>>,
     uploaded_vertex_count: usize,
     mesh_allocs: std::collections::HashMap<u64, (u32, u32)>,
-    index_allocs: std::collections::HashMap<u64, (u32, u32)>, // mesh_id -> (base_index, index_count)
+    index_allocs: std::collections::HashMap<u64, (u32, u32)>,
     next_free_vertex: u32,
     next_free_index: u32,
     scene_uniforms: Vec<Subbuffer<SceneUniform>>,
@@ -289,7 +289,7 @@ impl Renderer {
             .expect("no device available")
     }
 
-    pub fn init(&mut self, window: &winit::window::Window) { // &sdl3::video::Window
+    pub fn init(&mut self, window: &winit::window::Window) {
         #[cfg(target_os = "macos")]
         unsafe {
             std::env::remove_var("VK_ICD_FILENAMES");
