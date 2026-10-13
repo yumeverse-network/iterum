@@ -278,37 +278,3 @@ impl InputManager {
         &self.events
     }
 }
-
-/*use super::{
-    action::{ActionMap, Binding},
-    controller::{ControllerAxis, ControllerButton, ControllerId},
-    input_event::InputEvent,
-    input_state::InputState,
-    key::Key,
-    mouse::MouseButton,
-};
-
-use std::{collections::HashSet, iter::Scan};
-
-pub use sdl3::keyboard::Scancode;
-
-pub struct InputAPI {
-    pub keys_held: HashSet<Scancode>,
-}
-
-impl InputAPI {
-    pub fn new() -> Self {
-        Self {
-            keys_held: HashSet::new(),
-        }
-    }
-    
-    pub fn is_key_pressed(&self, scancode: Scancode) -> bool {
-        self.keys_held.contains(&scancode)
-    }
-
-    pub fn is_key_just_pressed(&self, scancode: Scancode) -> bool {
-        todo!("INPUT. JUST PRESSED");
-        false
-    }
-}*/

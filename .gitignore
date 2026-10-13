@@ -4,3 +4,4 @@
 .stignore
 Cargo.lock
 .DS_STORE
+*.tmp

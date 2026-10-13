@@ -118,6 +118,13 @@ impl Frustum {
     }
 }
 
+fn logical_extent(window: &winit::window::Window) -> [u32; 2] {
+    let s = window
+        .inner_size()
+        .to_logical::<f64>(window.scale_factor());
+    [(s.width.round() as u32).max(1), (s.height.round() as u32).max(1)]
+}
+
 pub struct Renderer {
     device: Option<Arc<Device>>,
     queue: Option<Arc<Queue>>,
@@ -131,6 +138,7 @@ pub struct Renderer {
     graphics_pipeline: Option<Arc<GraphicsPipeline>>,
     elapsed: f32,
     recreate_swapchain: bool,
+    startup_nudge: bool,
     msaa_samples: SampleCount,
     pending_msaa_samples: Option<SampleCount>,
     descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
@@ -205,6 +213,7 @@ impl Renderer {
             graphics_pipeline: None,
             elapsed: 0.0,
             recreate_swapchain: false,
+            startup_nudge: true,
             msaa_samples: SampleCount::Sample1,
             pending_msaa_samples: None,
             descriptor_set_allocator: None,
@@ -266,7 +275,7 @@ impl Renderer {
             .expect("no device available")
     }
 
-    pub fn init(&mut self, window: &sdl3::video::Window) {
+    pub fn init(&mut self, window: &winit::window::Window) { // &sdl3::video::Window
         #[cfg(target_os = "macos")]
         unsafe {
             std::env::remove_var("VK_ICD_FILENAMES");
@@ -448,7 +457,7 @@ impl Renderer {
             .surface_capabilities(&surface, Default::default())
             .expect("failed to get surface capabilities");
 
-        let dimensions = window.size();
+        let dimensions = logical_extent(window);
 
         let composite_alpha = caps
             .supported_composite_alpha
@@ -600,7 +609,8 @@ impl Renderer {
                 image_extent: dimensions.into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha,
-                present_mode: PresentMode::Immediate, // Immediate (No Vsync), Mailbox (Vsync- Non blocking), Fifo (Vsync- Blocking), FifoRelaxed (Adaptive Vsync?)
+                // Immediate (No Vsync), Mailbox (Vsync- Non blocking), Fifo (Vsync- Blocking), FifoRelaxed (Adaptive Vsync?)
+                present_mode: PresentMode::Immediate, // Doesn't work on Mac: Mailbox, FifoRelaxed
                 ..Default::default()
             },
         )
@@ -618,7 +628,7 @@ impl Renderer {
                     memory_allocator.clone(),
                     vulkano::image::ImageCreateInfo {
                         format: Format::D32_SFLOAT,
-                        extent: [dimensions.0, dimensions.1, 1],
+                        extent: [dimensions[0], dimensions[1], 1],
                         usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                         ..Default::default()
                     },
@@ -751,13 +761,26 @@ impl Renderer {
         self.sky_pipeline = Some(sky_pipeline);
     }
 
-    pub fn render(&mut self, window: &sdl3::video::Window, engine: &mut Engine) {
+    pub fn render(&mut self, window: &winit::window::Window, engine: &mut Engine) { // &sdl3::video::Window
         if self.recreate_swapchain {
-            let dimensions = window.size();
-            if dimensions.0 == 0 || dimensions.1 == 0 {
+            let mut dimensions = logical_extent(window);
+            if dimensions[0] == 0 || dimensions[1] == 0 {
                 return;
             }
 
+            let nudged = self.startup_nudge;
+            if nudged {
+                self.startup_nudge = false;
+                dimensions[0] += 1;
+            }
+
+            for f in self.in_flight.iter_mut() {
+                if let Some(prev) = f.take() {
+                    prev.wait(None).unwrap();
+                }
+            }
+
+            //println!("recreating swapchain: window {:?}", dimensions);
             let old_swapchain = self.swapchain.as_ref().unwrap();
             let (new_swapchain, new_images) = old_swapchain
                 .recreate(SwapchainCreateInfo {
@@ -778,7 +801,7 @@ impl Renderer {
                         self.memory_allocator.as_ref().unwrap().clone(),
                         vulkano::image::ImageCreateInfo {
                             format: Format::D32_SFLOAT,
-                            extent: [dimensions.0, dimensions.1, 1],
+                            extent: [dimensions[0], dimensions[1], 1],
                             usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                             ..Default::default()
                         },
@@ -805,7 +828,7 @@ impl Renderer {
                 .collect();
 
             self.swapchain = Some(new_swapchain);
-            self.recreate_swapchain = false;
+            self.recreate_swapchain = nudged;
         }
 
         if let Some(samples) = self.pending_msaa_samples.take() {
@@ -830,9 +853,9 @@ impl Renderer {
 
         let forward = camera.rotation * Vec3::NEG_Z;
 
-        let eye = camera.position.as_vec3();
-        let center = eye + forward;
-        let view = glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
+        //let eye = camera.position.as_vec3();
+        //let center = eye + forward;
+        //let view = glam::camera::rh::view::look_at_mat4(eye, center, Vec3::Y);
         //let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, Vec3::Y);
 
         let projection = glam::camera::rh::proj::vulkan::perspective(
@@ -1155,7 +1178,7 @@ impl Renderer {
         self.recreate_swapchain = true;
     }
 
-    fn rebuild_render_targets(&mut self, _window: &sdl3::video::Window) {
+    fn rebuild_render_targets(&mut self, _window: &winit::window::Window) { // &sdl3::video::Window
         self.recreate_swapchain = true;
     }
 }

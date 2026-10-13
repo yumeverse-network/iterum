@@ -8,13 +8,21 @@ pub enum MouseButton {
 }
 
 impl MouseButton {
-    pub fn from_sdl(button: sdl3::mouse::MouseButton) -> Self {
+    pub fn from_winit(button: winit::event::MouseButton) -> Self {
         match button {
-            sdl3::mouse::MouseButton::Left => Self::Left,
-            sdl3::mouse::MouseButton::Right => Self::Right,
-            sdl3::mouse::MouseButton::Middle => Self::Middle,
-            sdl3::mouse::MouseButton::X1 => Self::X1,
-            sdl3::mouse::MouseButton::X2 => Self::X2,
+            winit::event::MouseButton::Left => Self::Left,
+            winit::event::MouseButton::Right => Self::Right,
+            winit::event::MouseButton::Middle => Self::Middle,
+
+            winit::event::MouseButton::Other(code) => match code {
+                8 => Self::X1,
+                9 => Self::X2,
+                _ => Self::Left,
+            }
+
+            winit::event::MouseButton::Back => Self::X1,
+            winit::event::MouseButton::Forward => Self::X2,
+
             _ => Self::Left,
         }
     }

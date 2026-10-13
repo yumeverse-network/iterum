@@ -9,21 +9,22 @@ pub mod mesh;
 pub mod player;
 pub mod transform;
 
-pub mod render;
 pub mod input;
 pub mod nodes;
 pub mod physics;
+pub mod render;
+pub mod ui;
 
 pub mod test_scene;
 
 use bevy_ecs::world::World;
-use glam::{DVec3, Vec3};
+use glam::DVec3;
 
 use std::time::{Duration, Instant};
 
 pub use crate::engine::camera::Camera;
 use crate::engine::physics::PhysicsWorld;
-use crate::engine::physics::{sync_transforms, FIXED_DT};
+use crate::engine::physics::{FIXED_DT, sync_transforms};
 
 pub use console::Console;
 
@@ -54,7 +55,7 @@ impl Engine {
     pub fn new() -> Self {
         let mut camera = Camera::new();
         camera.position = DVec3::new(2.0, 3.0, 5.0);
-        
+
         Engine {
             running: true,
             camera,
@@ -77,18 +78,21 @@ impl Engine {
     pub fn load_scene(&mut self, name: &str) {
         self.world.clear_entities();
         self.physics_world = PhysicsWorld::new();
-    
+
         match name {
             "test" => test_scene::spawn(&mut self.world, &mut self.physics_world),
             other => self.logger.log_system(&format!("Unknown scene: {other}")),
         }
 
-        self.logger.log_system(&format!("Entities: {}", self.world.entities().len()));
+        self.logger
+            .log_system(&format!("Entities: {}", self.world.entities().len()));
     }
 
     pub fn init(&self) {
+        let ver = option_env!("CARGO_PKG_VERSION").unwrap_or("Unknown");
+        
         self.logger.log_system("-+ Iterum Engine +-");
-        self.logger.log_system("Version: 1.0");
+        self.logger.log_system(format!("Version: {}", ver));
         self.logger.break_line();
     }
 
@@ -109,7 +113,7 @@ impl Engine {
     fn step_physics(&mut self) {
         const MAX_STEPS: u32 = 5; // avoids the "spiral of death" after a lag spike
         self.physics_accumulator += self.get_delta();
-    
+
         let mut steps = 0;
         while self.physics_accumulator >= FIXED_DT && steps < MAX_STEPS {
             if let Some(ref mut callback) = self._on_fixed_update {
@@ -122,7 +126,7 @@ impl Engine {
         if steps == MAX_STEPS {
             self.physics_accumulator = 0.0;
         }
-    
+
         sync_transforms(&mut self.world, &self.physics_world);
     }
 

@@ -1,55 +1,125 @@
-use sdl3::EventPump;
-use sdl3::event::Event;
+use winit::{
+    application::ApplicationHandler, dpi::{LogicalPosition, PhysicalPosition}, event::{DeviceEvent, ElementState, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowId},
+};
+use std::time::Duration;
+use winit::platform::pump_events::{
+    EventLoopExtPumpEvents, PumpStatus,
+};
 
-pub struct Window {
-    pub sdl_context: Option<sdl3::Sdl>,
-    pub window: Option<sdl3::video::Window>,
-    pub event_pump: Option<EventPump>,
+use crate::engine::input::{InputEvent, InputManager, Key, MouseButton};
+
+#[derive(Default)]
+pub struct Win {
+    pub window: Option<winit::window::Window>,
+    pub resized: bool,
+    pub input: InputManager,
+    pub last_mouse_pos: Option<[f32; 2]>,
 }
 
-impl Window {
-    pub fn new() -> Self {
-        Window {
-            sdl_context: None,
-            window: None,
-            event_pump: None,
+impl ApplicationHandler for Win {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let win_attributes = Window::default_attributes()
+            .with_title("Iterum")
+            .with_inner_size(winit::dpi::LogicalSize::new(1280, 720)) // 800, 600
+            .with_resizable(true);
+
+        self.window = Some(
+            event_loop.create_window(win_attributes).unwrap()
+        );
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    )
+    {
+        if let DeviceEvent::MouseMotion { delta } = event {
+            self.input.process_event(InputEvent::MouseMotion {
+                position: self.input.mouse_position(),
+                delta: [delta.0 as f32, delta.1 as f32],
+            });
         }
     }
 
-    pub fn init_window(&mut self) {
-        let sdl_context = sdl3::init().unwrap();
-        let video = sdl_context.video().unwrap();
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    )
+    {
+        match event {
+            WindowEvent::Resized(_) => {
+                self.resized = true;
+            }
+            
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            
+            WindowEvent::KeyboardInput { event, .. } =>
+            if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
+                if let Some(key) = Key::from_scancode(code) {
+                    self.input.process_event(InputEvent::Key {
+                        key,
+                        pressed: event.state == ElementState::Pressed,
+                        repeat: false
+                    });
+                }
+            }
+            
+            WindowEvent::MouseInput { state, button, .. } => {
+                self.input.process_event(InputEvent::MouseButton {
+                    button: MouseButton::from_winit(button),
+                    pressed: state == ElementState::Pressed,
+                });
+            }
 
-        let window = video
-            .window("Iterum", 800, 600)
-            .vulkan()
-            .resizable()
-            .position_centered()
-            .build()
-            .unwrap();
+            WindowEvent::CursorMoved { position, .. } => {
+                self.last_mouse_pos = Some([
+                    position.x as f32,
+                    position.y as f32,
+                ]);
+            }
+            
+            _ => {}
+        }
+    }
+}
 
-        self.window = Some(window);
-        self.event_pump = Some(sdl_context.event_pump().unwrap());
-        self.sdl_context = Some(sdl_context);
+impl Win {
+    pub fn new() -> Self {
+        Win {
+            window: None,
+            resized: false,
+            input: InputManager::new(),
+            last_mouse_pos: None,
+        }
     }
 
     pub fn set_relative_mouse_mode(&self, enabled: bool) {
         let window = self.window.as_ref().unwrap();
-        let context = self.sdl_context.as_ref().unwrap();
-        context.mouse().set_relative_mouse_mode(window, enabled);
+
+        window.set_cursor_grab(if enabled {
+            winit::window::CursorGrabMode::Locked
+        } else {
+            winit::window::CursorGrabMode::None
+        }).unwrap();
+        
+        window.set_cursor_visible(!enabled);
     }
 
     pub fn warp_mouse(&self, x: f32, y: f32) {
-        let window = self.window.as_ref().unwrap();
-        let context = self.sdl_context.as_ref().unwrap();
-        context.mouse().warp_mouse_in_window(window, x, y);
+        if let Some(window) = &self.window {
+            let _ = window.set_cursor_position(
+                PhysicalPosition::new(x as f64, y as f64)
+            );
+        }
     }
 
-    pub fn update(&mut self) -> Vec<Event> {
-        if let Some(event_pump) = &mut self.event_pump {
-            return event_pump.poll_iter().collect();
-        }
-
-        Vec::new()
+    pub fn update(&mut self, event_loop: &mut EventLoop<()>) -> PumpStatus {
+        event_loop.pump_app_events(Some(Duration::ZERO), self)
     }
 }

@@ -1,12 +1,12 @@
 use glam::{DQuat, DVec3};
 use mimalloc::MiMalloc;
+use winit::{event_loop::EventLoop, platform::pump_events::PumpStatus};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use crate::engine::input::{Action, Binding, InputEvent, InputManager, Key, MouseButton};
+use crate::engine::{input::{Action, Binding, InputEvent, InputManager, Key, MouseButton}, render::window::Win};
 use engine::Engine;
-use sdl3::event::Event;
 mod engine;
 
 use std::time::Instant;
@@ -17,10 +17,13 @@ fn main() {
     let logger = engine::console::Console::new();
     let math = engine::emath::EMath::new();
     let mut fps = engine::fps::FpsCounter::new();
-    let mut winman = engine::render::window::Window::new();
+    let mut event_loop = EventLoop::new().unwrap();
+    let mut winman = Win::new();
     let mut renderer = engine::render::renderer::Renderer::new();
-    let mut input = InputManager::new();
     let mut player = engine::player::Player::new();
+
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+    
 
     engine.init();
     engine.init_world();
@@ -44,36 +47,35 @@ fn main() {
 
     logger.break_line();
 
-    winman.init_window();
-
+    winman.update(&mut event_loop);
     renderer.init(winman.window.as_ref().unwrap());
 
     // INPUT ACTIONS
-    input
+    winman.input
         .actions
         .bind("mv_forward", Action::new(vec![Binding::Key(Key::W)]));
 
-    input
+    winman.input
         .actions
         .bind("mv_backward", Action::new(vec![Binding::Key(Key::S)]));
 
-    input
+    winman.input
         .actions
         .bind("mv_left", Action::new(vec![Binding::Key(Key::A)]));
 
-    input
+    winman.input
         .actions
         .bind("mv_right", Action::new(vec![Binding::Key(Key::D)]));
 
-    input
+    winman.input
         .actions
         .bind("mv_up", Action::new(vec![Binding::Key(Key::E)]));
 
-    input
+    winman.input
         .actions
         .bind("mv_down", Action::new(vec![Binding::Key(Key::Q)]));
 
-    input
+    winman.input
         .actions
         .bind("speedup", Action::new(vec![Binding::Key(Key::Shift)]));
 
@@ -82,50 +84,22 @@ fn main() {
     while engine.is_running() {
         let frame_start = Instant::now();
 
-        input.begin_frame();
+        winman.input.begin_frame();
+
+        if let PumpStatus::Exit(_) = winman.update(&mut event_loop) {
+            logger.log_system("Exiting...");
+            engine.quit();
+            break;
+        }
 
         // WINDOW / INPUT EVENTS
-        for event in winman.update() {
+        if winman.resized {
+            renderer.request_swapchain_recreation();
+            winman.resized = false;
+        }
+        
+        /*for event in winman.update() {
             match event {
-                Event::Window {
-                    win_event: sdl3::event::WindowEvent::Resized(_, _),
-                    ..
-                } => {
-                    renderer.request_swapchain_recreation();
-                }
-
-                sdl3::event::Event::Quit { .. } => {
-                    engine.quit();
-                }
-
-                sdl3::event::Event::KeyDown {
-                    scancode: Some(sc),
-                    repeat,
-                    ..
-                } => {
-                    if let Some(key) = Key::from_scancode(sc) {
-                        input.process_event(InputEvent::Key {
-                            key,
-                            pressed: true,
-                            repeat,
-                        });
-                    }
-                }
-
-                sdl3::event::Event::MouseButtonDown { mouse_btn, .. } => {
-                    input.process_event(InputEvent::MouseButton {
-                        button: MouseButton::from_sdl(mouse_btn),
-                        pressed: true,
-                    });
-                }
-
-                sdl3::event::Event::MouseButtonUp { mouse_btn, .. } => {
-                    input.process_event(InputEvent::MouseButton {
-                        button: MouseButton::from_sdl(mouse_btn),
-                        pressed: false,
-                    });
-                }
-
                 //Event::MouseMotion { timestamp, window_id, which, mousestate, x, y, xrel, yrel }
                 sdl3::event::Event::MouseMotion {
                     x, y, xrel, yrel, ..
@@ -136,21 +110,9 @@ fn main() {
                     });
                 }
 
-                sdl3::event::Event::KeyUp {
-                    scancode: Some(sc), ..
-                } => {
-                    if let Some(key) = Key::from_scancode(sc) {
-                        input.process_event(InputEvent::Key {
-                            key,
-                            pressed: false,
-                            repeat: false,
-                        });
-                    }
-                }
-
                 _ => {}
             }
-        }
+        }*/
 
         // INPUT
         let speed;
@@ -158,49 +120,48 @@ fn main() {
         let mut dz = 0.0;
         let mut dy = 0.0;
 
-        if input.is_action_pressed("speedup") {
+        if winman.input.is_action_pressed("speedup") {
             speed = 2.0e10; // 3.4028234663852886e38 is max speed tested
         } else {
             speed = 10.0;
         }
 
-        //let [mx, my] = input.mouse_position();
-        let [mdx, mdy] = input.mouse_delta();
+        let [mdx, mdy] = winman.input.mouse_delta();
         let m_sens = 0.02;
 
-        if input.is_mouse_button_just_pressed(MouseButton::Right) {
-            drag_start = Some(input.mouse_position());
+        if winman.input.is_mouse_button_just_pressed(MouseButton::Right) {
+            drag_start = winman.last_mouse_pos;
             winman.set_relative_mouse_mode(true);
         }
 
-        if input.is_mouse_button_pressed(MouseButton::Right) {
+        if winman.input.is_mouse_button_pressed(MouseButton::Right) {
             engine.camera.rotate(-mdx * m_sens, -mdy * m_sens);
 
-            if input.is_action_pressed("mv_forward") {
+            if winman.input.is_action_pressed("mv_forward") {
                 dz = -speed;
             }
 
-            if input.is_action_pressed("mv_backward") {
+            if winman.input.is_action_pressed("mv_backward") {
                 dz = speed;
             }
 
-            if input.is_action_pressed("mv_left") {
+            if winman.input.is_action_pressed("mv_left") {
                 dx = -speed;
             }
 
-            if input.is_action_pressed("mv_right") {
+            if winman.input.is_action_pressed("mv_right") {
                 dx = speed;
             }
 
-            if input.is_action_pressed("mv_up") {
+            if winman.input.is_action_pressed("mv_up") {
                 dy = speed;
             }
 
-            if input.is_action_pressed("mv_down") {
+            if winman.input.is_action_pressed("mv_down") {
                 dy = -speed;
             }
         }
-        if input.is_mouse_button_just_released(MouseButton::Right) {
+        if winman.input.is_mouse_button_just_released(MouseButton::Right) {
             winman.set_relative_mouse_mode(false);
 
             if let Some([sx, sy]) = drag_start {
@@ -220,7 +181,7 @@ fn main() {
         player.update(dt);
         engine.camera.follow(&player);
         engine.update();
-
+        
         renderer.render(winman.window.as_ref().unwrap(), &mut engine);
 
         /*if player.position != last_pos {

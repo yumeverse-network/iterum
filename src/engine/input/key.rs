@@ -29,69 +29,69 @@ pub enum Key {
 
 impl Key {
     pub fn from_scancode(
-        scancode: sdl3::keyboard::Scancode,
+        scancode: winit::keyboard::KeyCode,
     ) -> Option<Self> {
-        use sdl3::keyboard::Scancode::*;
-
+        use winit::keyboard::KeyCode::*;
+        
         Some(match scancode {
-            A => Self::A,
-            B => Self::B,
-            C => Self::C,
-            D => Self::D,
-            E => Self::E,
-            F => Self::F,
-            G => Self::G,
-            H => Self::H,
-            I => Self::I,
-            J => Self::J,
-            K => Self::K,
-            L => Self::L,
-            M => Self::M,
-            N => Self::N,
-            O => Self::O,
-            P => Self::P,
-            Q => Self::Q,
-            R => Self::R,
-            S => Self::S,
-            T => Self::T,
-            U => Self::U,
-            V => Self::V,
-            W => Self::W,
-            X => Self::X,
-            Y => Self::Y,
-            Z => Self::Z,
-
-            _0 => Self::Num0,
-            _1 => Self::Num1,
-            _2 => Self::Num2,
-            _3 => Self::Num3,
-            _4 => Self::Num4,
-            _5 => Self::Num5,
-            _6 => Self::Num6,
-            _7 => Self::Num7,
-            _8 => Self::Num8,
-            _9 => Self::Num9,
-
+            KeyA => Self::A,
+            KeyB => Self::B,
+            KeyC => Self::C,
+            KeyD => Self::D,
+            KeyE => Self::E,
+            KeyF => Self::F,
+            KeyG => Self::G,
+            KeyH => Self::H,
+            KeyI => Self::I,
+            KeyJ => Self::J,
+            KeyK => Self::K,
+            KeyL => Self::L,
+            KeyM => Self::M,
+            KeyN => Self::N,
+            KeyO => Self::O,
+            KeyP => Self::P,
+            KeyQ => Self::Q,
+            KeyR => Self::R,
+            KeyS => Self::S,
+            KeyT => Self::T,
+            KeyU => Self::U,
+            KeyV => Self::V,
+            KeyW => Self::W,
+            KeyX => Self::X,
+            KeyY => Self::Y,
+            KeyZ => Self::Z,
+            
+            Digit0 => Self::Num0,
+            Digit1 => Self::Num1,
+            Digit2 => Self::Num2,
+            Digit3 => Self::Num3,
+            Digit4 => Self::Num4,
+            Digit5 => Self::Num5,
+            Digit6 => Self::Num6,
+            Digit7 => Self::Num7,
+            Digit8 => Self::Num8,
+            Digit9 => Self::Num9,
+            
             Escape => Self::Escape,
-            Return => Self::Enter,
+            Enter => Self::Enter,
             Tab => Self::Tab,
             Backspace => Self::Backspace,
             Space => Self::Space,
 
-            Left => Self::Left,
-            Right => Self::Right,
-            Up => Self::Up,
-            Down => Self::Down,
+            ArrowLeft => Self::Left,
+            ArrowRight => Self::Right,
+            ArrowUp => Self::Up,
+            ArrowDown => Self::Down,
 
-            sdl3::keyboard::Scancode::LShift
-            | sdl3::keyboard::Scancode::RShift => Self::Shift,
+            winit::keyboard::KeyCode::ShiftLeft
+            | winit::keyboard::KeyCode::ShiftRight => Self::Shift,
             
-            sdl3::keyboard::Scancode::LCtrl
-            | sdl3::keyboard::Scancode::RCtrl => Self::Ctrl,
+            winit::keyboard::KeyCode::ControlLeft
+            | winit::keyboard::KeyCode::ControlRight => Self::Ctrl,
             
-            sdl3::keyboard::Scancode::LAlt
-            | sdl3::keyboard::Scancode::RAlt => Self::Alt,
-
+            winit::keyboard::KeyCode::AltLeft
+            | winit::keyboard::KeyCode::AltRight => Self::Alt,
+            
             F1 => Self::F1,
             F2 => Self::F2,
             F3 => Self::F3,

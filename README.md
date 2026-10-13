@@ -71,7 +71,7 @@ Please see `LICENSE` for more detail.
 - [ ] Post Processing (Bloom, Tone Mapping, Color Grading)
 - [ ] Anti-Aliasing (MSAA, FXAA, TAA)
 - [ ] GPU Particles
-- [X] Shader Based Sky (no skybox)
+- [ ] Shader Based Sky (no skybox)
 - [ ] SSR
 - [ ] LOD Dithering
 - [ ] Automatic LODs
@@ -129,7 +129,7 @@ Please see `LICENSE` for more detail.
 - [ ] Windows Arm64 (Considering)
 - [X] Linux x86_64
 - [ ] Linux Arm64 (Not Tested)
-- [ ] macOS - MoltenVK (Broken)
+- [X] macOS - MoltenVK
 - [ ] macOS - Native (Considering)
 
 ## Installation
@@ -137,7 +137,7 @@ Please see `LICENSE` for more detail.
 Iterum is currently source-only and does not have prebuilt binaries yet.
 
 ```bash
-cargo install --path .
+cargo install --path . && iterum
 ```
 
 ## Contributing
