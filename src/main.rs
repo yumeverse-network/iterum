@@ -23,7 +23,7 @@ fn main() {
     let mut player = engine::player::Player::new();
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-    
+
 
     engine.init();
     engine.init_world();
@@ -97,7 +97,7 @@ fn main() {
             renderer.request_swapchain_recreation();
             winman.resized = false;
         }
-        
+
         /*for event in winman.update() {
             match event {
                 //Event::MouseMotion { timestamp, window_id, which, mousestate, x, y, xrel, yrel }
@@ -121,7 +121,7 @@ fn main() {
         let mut dy = 0.0;
 
         if winman.input.is_action_pressed("speedup") {
-            speed = 2.0e10; // 3.4028234663852886e38 is max speed tested
+            speed = 2.0e10; // 9.46e17 is max speed tested
         } else {
             speed = 10.0;
         }
@@ -181,7 +181,7 @@ fn main() {
         player.update(dt);
         engine.camera.follow(&player);
         engine.update();
-        
+
         renderer.render(winman.window.as_ref().unwrap(), &mut engine);
 
         /*if player.position != last_pos {
