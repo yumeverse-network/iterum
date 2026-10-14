@@ -5,7 +5,10 @@ use winit::{event_loop::EventLoop, platform::pump_events::PumpStatus};
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use crate::engine::{input::{Action, Binding, InputEvent, InputManager, Key, MouseButton}, render::window::Win};
+use crate::engine::{
+    input::{Action, Binding, Key, MouseButton},
+    render::window::Win,
+};
 use engine::Engine;
 mod engine;
 
@@ -23,7 +26,6 @@ fn main() {
     let mut player = engine::player::Player::new();
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-
 
     engine.init();
     engine.init_world();
@@ -51,31 +53,38 @@ fn main() {
     renderer.init(winman.window.as_ref().unwrap());
 
     // INPUT ACTIONS
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_forward", Action::new(vec![Binding::Key(Key::W)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_backward", Action::new(vec![Binding::Key(Key::S)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_left", Action::new(vec![Binding::Key(Key::A)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_right", Action::new(vec![Binding::Key(Key::D)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_up", Action::new(vec![Binding::Key(Key::E)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("mv_down", Action::new(vec![Binding::Key(Key::Q)]));
 
-    winman.input
+    winman
+        .input
         .actions
         .bind("speedup", Action::new(vec![Binding::Key(Key::Shift)]));
 
@@ -129,7 +138,10 @@ fn main() {
         let [mdx, mdy] = winman.input.mouse_delta();
         let m_sens = 0.02;
 
-        if winman.input.is_mouse_button_just_pressed(MouseButton::Right) {
+        if winman
+            .input
+            .is_mouse_button_just_pressed(MouseButton::Right)
+        {
             drag_start = winman.last_mouse_pos;
             winman.set_relative_mouse_mode(true);
         }
@@ -161,7 +173,10 @@ fn main() {
                 dy = -speed;
             }
         }
-        if winman.input.is_mouse_button_just_released(MouseButton::Right) {
+        if winman
+            .input
+            .is_mouse_button_just_released(MouseButton::Right)
+        {
             winman.set_relative_mouse_mode(false);
 
             if let Some([sx, sy]) = drag_start {
