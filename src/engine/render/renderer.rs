@@ -2,6 +2,7 @@ use crate::engine::nodes::planet::Star;
 use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
 use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
+use vulkano::image::sampler::Sampler;
 use std::sync::Arc;
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState};
 use vulkano::pipeline::graphics::vertex_input::VertexInputState;
@@ -39,7 +40,7 @@ use vulkano::{
             multisample::MultisampleState,
             rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
+            viewport::{Scissor, Viewport, ViewportState},
         },
         layout::{PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
     },
@@ -88,12 +89,12 @@ impl Frustum {
         let m = m.transpose();
 
         let mut planes = [
-            m.w_axis + m.x_axis, // Left
-            m.w_axis - m.x_axis, // Right
-            m.w_axis + m.y_axis, // Bottom
-            m.w_axis - m.y_axis, // Top
-            m.z_axis,            // Near (Vulkan [0, 1] Z mapping)
-            m.w_axis - m.z_axis, // Far
+            m.w_axis + m.x_axis,
+            m.w_axis - m.x_axis,
+            m.w_axis + m.y_axis,
+            m.w_axis - m.y_axis,
+            m.z_axis,
+            m.w_axis - m.z_axis,
         ];
 
         let inv_view = view.transpose();
@@ -120,7 +121,7 @@ impl Frustum {
     }
 }
 
-fn logical_extent(window: &winit::window::Window) -> [u32; 2] {
+pub fn logical_extent(window: &winit::window::Window) -> [u32; 2] {
     let s = window
         .inner_size()
         .to_logical::<f64>(window.scale_factor());
@@ -162,6 +163,17 @@ pub struct Renderer {
     frame_index: usize,
     draw_list: Vec<DrawObject>,
     in_flight: Vec<Option<FenceSignalFuture<Box<dyn GpuFuture>>>>,
+    ui_pipeline: Option<Arc<GraphicsPipeline>>,
+    ui_font_set: Option<Arc<DescriptorSet>>,
+    swapchain_format: Format,
+    viewport_color_view: Option<Arc<ImageView>>,
+    viewport_depth_view: Option<Arc<ImageView>>,
+    viewport_framebuffer: Option<Arc<Framebuffer>>,
+    viewport_extent: [u32; 2],
+    viewport_size_dirty: bool,
+    viewport_sampler: Option<Arc<Sampler>>,
+    viewport_descriptor: Option<Arc<DescriptorSet>>,
+    viewport_tex_id: imgui::TextureId,
 }
 
 #[derive(BufferContents, Copy, Clone)]
@@ -206,6 +218,14 @@ struct SceneUniform {
     _pad3: f32,
 }
 
+#[derive(BufferContents, Vertex, Clone, Copy)]
+#[repr(C)]
+struct UiVertex {
+    #[format(R32G32_SFLOAT)] pos: [f32; 2],
+    #[format(R32G32_SFLOAT)] uv: [f32; 2],
+    #[format(R8G8B8A8_UNORM)] col: [u8; 4],
+}
+
 impl Renderer {
     pub fn new() -> Self {
         Self {
@@ -243,22 +263,19 @@ impl Renderer {
             frame_index: 0,
             draw_list: Vec::new(),
             in_flight: (0..FRAMES_IN_FLIGHT).map(|_| None).collect(),
+            ui_pipeline: None,
+            ui_font_set: None,
+            swapchain_format: Format::B8G8R8A8_SRGB,
+            viewport_color_view: None,
+            viewport_depth_view: None,
+            viewport_framebuffer: None,
+            viewport_extent: [1280, 720],
+            viewport_size_dirty: false,
+            viewport_sampler: None,
+            viewport_descriptor: None,
+            viewport_tex_id: imgui::TextureId::new(1),
         }
     }
-
-    /*pub fn set_msaa_samples(&mut self, samples: SampleCount) {
-        if samples != self.msaa_samples {
-            self.pending_msaa_samples = Some(samples);
-        }
-    }*/
-
-    /*pub fn set_msaa_enabled(&mut self, enabled: bool) {
-        self.set_msaa_samples(if enabled {
-            SampleCount::Sample1
-        } else {
-            SampleCount::Sample1
-        });
-    }*/
 
     fn select_physical_device(
         instance: &Arc<Instance>,
@@ -287,6 +304,47 @@ impl Renderer {
                 _ => 4,
             })
             .expect("no device available")
+    }
+
+    fn create_viewport_targets(
+        &self,
+        format: Format,
+        extent: [u32; 2],
+    ) -> (Arc<ImageView>, Arc<ImageView>, Arc<Framebuffer>) {
+        let ma = self.memory_allocator.as_ref().unwrap().clone();
+        let color_image = Image::new(
+            ma.clone(),
+            vulkano::image::ImageCreateInfo {
+                format,
+                extent: [extent[0].max(1), extent[1].max(1), 1],
+                usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+        let depth_image = Image::new(
+            ma,
+            vulkano::image::ImageCreateInfo {
+                format: Format::D32_SFLOAT,
+                extent: [extent[0].max(1), extent[1].max(1), 1],
+                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+        let color_view = ImageView::new_default(color_image).unwrap();
+        let depth_view = ImageView::new_default(depth_image).unwrap();
+        let fb = Framebuffer::new(
+            self.render_pass.as_ref().unwrap().clone(),
+            FramebufferCreateInfo {
+                attachments: vec![color_view.clone(), depth_view.clone()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        (color_view, depth_view, fb)
     }
 
     pub fn init(&mut self, window: &winit::window::Window) {
@@ -347,60 +405,6 @@ impl Renderer {
         let fragment_entry = fragment_shader.entry_point("main").unwrap();
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-        //let data: i32 = 12;
-        let iter = (0..128).map(|_| 5u8);
-        let buffer = Buffer::from_iter(
-            //from iter, from data
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            iter, // data
-        )
-        .expect("failed to create buffer");
-
-        let mut content = buffer.write().unwrap();
-        content[12] *= 2;
-        content[7] = 9;
-
-        let source_content = 0..64;
-        let source = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            source_content,
-        )
-        .expect("failed to create source buffer");
-
-        let destination_content = (0..64).map(|_| 0);
-        let destination = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
-                ..Default::default()
-            },
-            destination_content,
-        )
-        .expect("failed to create destination buffer");
 
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
@@ -473,31 +477,6 @@ impl Renderer {
             })
             .collect();
 
-        let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator.clone(),
-            queue_family_index,
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        builder
-            .copy_buffer(CopyBufferInfo::buffers(source.clone(), destination.clone()))
-            .unwrap();
-
-        let command_buffer = builder.build().unwrap();
-
-        let future = sync::now(device.clone())
-            .then_execute(queue.clone(), command_buffer)
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap();
-
-        future.wait(None).unwrap();
-
-        let src_content = source.read().unwrap();
-        let destination_content = destination.read().unwrap();
-        assert_eq!(&*src_content, &*destination_content);
-
         logger.log_system("Surface initialisation succeeded.");
 
         let caps = physical_device
@@ -520,22 +499,10 @@ impl Renderer {
             .expect("surface has no supported formats")
             .0;
 
-        let render_pass = vulkano::single_pass_renderpass!(
+        let render_pass = vulkano::ordered_passes_renderpass!(
             device.clone(),
             attachments: {
-                /*color: {
-                    format: image_format,
-                    samples: 4, // here
-                    load_op: Clear,
-                    store_op: Store,
-                },*/
-                /*multisampled_color: {
-                    format: image_format,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: DontCare,
-                },*/
-                swapchain_color: { // this
+                swapchain_color: {
                     format: image_format,
                     samples: 1,
                     load_op: Clear,
@@ -543,17 +510,23 @@ impl Renderer {
                 },
                 depth: {
                     format: Format::D32_SFLOAT,
-                    samples: 1, // here
+                    samples: 1,
                     load_op: Clear,
                     store_op: DontCare,
+                }
+            },
+            passes: [
+                {
+                    color: [swapchain_color],
+                    depth_stencil: {depth},
+                    input: []
                 },
-            },
-            pass: {
-                //color: [multisampled_color], // color
-                //color_resolve: [swapchain_color], // that
-                color: [swapchain_color],
-                depth_stencil: {depth},
-            },
+                {
+                    color: [swapchain_color],
+                    depth_stencil: {},
+                    input: []
+                }
+            ]
         )
         .unwrap();
 
@@ -617,7 +590,7 @@ impl Renderer {
             PipelineShaderStageCreateInfo::new(sky_vert_entry),
             PipelineShaderStageCreateInfo::new(sky_frag_entry),
         ];
-        
+
         let mut sky_info = GraphicsPipelineCreateInfo::layout(layout);
         sky_info.stages = sky_stages.into_iter().collect();
         sky_info.vertex_input_state = Some(VertexInputState::default());
@@ -656,8 +629,7 @@ impl Renderer {
                 image_extent: dimensions.into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha,
-                // Immediate (No Vsync), Mailbox (Vsync- Non blocking), Fifo (Vsync- Blocking), FifoRelaxed (Adaptive Vsync?)
-                present_mode: PresentMode::Immediate, // Doesn't work on Mac: Mailbox, FifoRelaxed
+                present_mode: PresentMode::Immediate,
                 ..Default::default()
             },
         )
@@ -808,6 +780,13 @@ impl Renderer {
         self.image_available = image_available;
         self.render_finished = render_finished;
         self.sky_pipeline = Some(sky_pipeline);
+        self.swapchain_format = image_format;
+
+        let (color_view, depth_view, fb) =
+            self.create_viewport_targets(image_format, self.viewport_extent);
+        self.viewport_color_view = Some(color_view);
+        self.viewport_depth_view = Some(depth_view);
+        self.viewport_framebuffer = Some(fb);
     }
 
     pub fn upload_mesh(&mut self, mesh: &Mesh) {
@@ -895,7 +874,48 @@ impl Renderer {
         self.next_free_index += index_count;
     }
 
-    pub fn render(&mut self, window: &winit::window::Window, engine: &mut Engine) {
+    fn recreate_viewport_targets(&mut self) {
+        let (color_view, depth_view, fb) =
+            self.create_viewport_targets(self.swapchain_format, self.viewport_extent);
+        self.viewport_color_view = Some(color_view);
+        self.viewport_depth_view = Some(depth_view);
+        self.viewport_framebuffer = Some(fb);
+
+        if let (Some(pipe), Some(sampler)) = (self.ui_pipeline.as_ref(), self.viewport_sampler.as_ref()) {
+            let set = DescriptorSet::new(
+                self.descriptor_set_allocator.clone().unwrap(),
+                pipe.layout().set_layouts()[0].clone(),
+                [WriteDescriptorSet::image_view_sampler(
+                    0,
+                    self.viewport_color_view.clone().unwrap(),
+                    sampler.clone(),
+                )],
+                [],
+            )
+            .unwrap();
+            self.viewport_descriptor = Some(set);
+        }
+    }
+
+    pub fn set_viewport_size(&mut self, [w, h]: [u32; 2]) {
+        let w = w.max(1);
+        let h = h.max(1);
+        if [w, h] != self.viewport_extent {
+            self.viewport_extent = [w, h];
+            self.viewport_size_dirty = true;
+        }
+    }
+
+    pub fn viewport_tex_id(&self) -> imgui::TextureId {
+        self.viewport_tex_id
+    }
+
+    pub fn render(
+        &mut self,
+        window: &winit::window::Window,
+        engine: &mut Engine,
+        ui: Option<&imgui::DrawData>,
+    ) {
         if self.recreate_swapchain {
             let mut dimensions = logical_extent(window);
             if dimensions[0] == 0 || dimensions[1] == 0 {
@@ -914,7 +934,6 @@ impl Renderer {
                 }
             }
 
-            //println!("recreating swapchain: window {:?}", dimensions);
             let old_swapchain = self.swapchain.as_ref().unwrap();
             let (new_swapchain, new_images) = old_swapchain
                 .recreate(SwapchainCreateInfo {
@@ -965,9 +984,13 @@ impl Renderer {
             self.recreate_swapchain = nudged;
         }
 
-        if let Some(samples) = self.pending_msaa_samples.take() {
-            self.msaa_samples = samples;
-            self.rebuild_render_targets(window);
+        if self.pending_msaa_samples.take().is_some() {
+            self.recreate_swapchain = true;
+        }
+
+        if self.viewport_size_dirty {
+            self.recreate_viewport_targets();
+            self.viewport_size_dirty = false;
         }
 
         let frame = self.frame_index;
@@ -987,9 +1010,16 @@ impl Renderer {
 
         let forward = camera.rotation * Vec3::NEG_Z;
 
-        let projection = glam::camera::rh::proj::vulkan::perspective(
+        let swapchain_projection = glam::camera::rh::proj::vulkan::perspective(
             camera.fov.to_radians(),
             dimensions[0] as f32 / dimensions[1] as f32,
+            camera.near,
+            camera.far,
+        );
+
+        let viewport_projection = glam::camera::rh::proj::vulkan::perspective(
+            camera.fov.to_radians(),
+            self.viewport_extent[0] as f32 / self.viewport_extent[1] as f32,
             camera.near,
             camera.far,
         );
@@ -1024,7 +1054,8 @@ impl Renderer {
 
         let cam_up = camera.rotation * Vec3::Y;
         let view_rel = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, forward, cam_up);
-        let view_proj = projection * view_rel;
+
+        let view_proj = swapchain_projection * view_rel;
         let frustum = Frustum::from_view_proj(view_proj, view_rel);
 
         for mesh in engine.world.query::<&Mesh>().iter(&engine.world) {
@@ -1096,8 +1127,6 @@ impl Renderer {
             depth_range: 0.0..=1.0,
         };
 
-        let inv_view_proj = view_proj.inverse();
-
         let (sky_top, sky_bottom) = match engine
             .world
             .query::<&GlobalSky>()
@@ -1118,12 +1147,36 @@ impl Renderer {
             None => (0.0, 0.0, 0.0),
         };
 
+        let sun_color = if light_count > 0 {
+            gpu_lights[0].color
+        } else {
+            [1.0, 1.0, 1.0]
+        };
+
+        let sky_push = SkyPush {
+            sun_direction: [0.0, 1.0, 1.0],
+            sun_intensity: 1.0,
+            sun_color,
+            _pad0: 0.0,
+            sky_top: sky_top.to_array(),
+            _pad1: 0.0,
+            sky_bottom: sky_bottom.to_array(),
+            _pad2: 0.0,
+            _pad3: [0.0; 4],
+            star_density,
+            star_brightness,
+            star_seed,
+            _pad4: 0.0,
+        };
+
+        let viewport_inv_vp = (viewport_projection * view_rel).inverse();
+
         {
             let mut w = self.scene_uniforms[frame].write().unwrap();
             *w = SceneUniform {
-                view: view_rel.to_cols_array_2d(), // view.
-                projection: projection.to_cols_array_2d(),
-                inv_view_proj: inv_view_proj.to_cols_array_2d(),
+                view: view_rel.to_cols_array_2d(),
+                projection: viewport_projection.to_cols_array_2d(),
+                inv_view_proj: viewport_inv_vp.to_cols_array_2d(),
                 camera_position: [0.0, 0.0, 0.0],
                 _pad0: 0.0,
                 light_count: light_count as u32,
@@ -1137,6 +1190,122 @@ impl Renderer {
         }
 
         let descriptor_set = self.scene_descriptors[frame].clone();
+
+        let mut scene_builder = AutoCommandBufferBuilder::primary(
+            command_buffer_allocator.clone(),
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        scene_builder
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values: vec![Some([0.02, 0.02, 0.02, 1.0].into()), Some(1.0f32.into())],
+                    ..RenderPassBeginInfo::framebuffer(
+                        self.viewport_framebuffer.clone().unwrap(),
+                    )
+                },
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .set_viewport(
+                0,
+                smallvec![Viewport {
+                    offset: [0.0, 0.0],
+                    extent: [
+                        self.viewport_extent[0] as f32,
+                        self.viewport_extent[1] as f32
+                    ],
+                    depth_range: 0.0..=1.0,
+                }],
+            )
+            .unwrap();
+
+        scene_builder
+            .bind_pipeline_graphics(sky_pipeline.clone())
+            .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                sky_pipeline.layout().clone(),
+                0,
+                descriptor_set.clone(),
+            )
+            .unwrap();
+
+        unsafe {
+            scene_builder
+                .push_constants(sky_pipeline.layout().clone(), 0, sky_push)
+                .unwrap()
+                .draw(3, 1, 0, 0)
+                .unwrap();
+        }
+
+        if !self.draw_list.is_empty() {
+            scene_builder
+                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .unwrap()
+                .bind_vertex_buffers(0, self.vertex_buffer.as_ref().unwrap().clone())
+                .unwrap()
+                .bind_index_buffer(self.index_buffer.as_ref().unwrap().clone())
+                .unwrap()
+                .bind_descriptor_sets(
+                    PipelineBindPoint::Graphics,
+                    graphics_pipeline.layout().clone(),
+                    0,
+                    descriptor_set,
+                )
+                .unwrap();
+
+            for obj in &self.draw_list {
+                let relative_position = obj.position.camera_relative_f32(camera.position);
+                let model = Mat4::from_scale_rotation_translation(
+                    obj.scale,
+                    obj.rotation,
+                    relative_position,
+                );
+                unsafe {
+                    scene_builder
+                        .push_constants(
+                            graphics_pipeline.layout().clone(),
+                            0,
+                            ModelPush {
+                                model: model.to_cols_array_2d(),
+                                emissive: obj.emissive,
+                            },
+                        )
+                        .unwrap();
+                    scene_builder
+                        .draw_indexed(
+                            obj.index_count,
+                            1,
+                            obj.base_index,
+                            obj.base_vertex as i32,
+                            0,
+                        )
+                        .unwrap();
+                }
+            }
+        }
+
+        scene_builder
+            .next_subpass(
+                SubpassEndInfo::default(),
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        scene_builder
+            .end_render_pass(SubpassEndInfo::default())
+            .unwrap();
+
+        let scene_cb = scene_builder.build().unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             command_buffer_allocator,
@@ -1160,91 +1329,136 @@ impl Renderer {
             .set_viewport(0, smallvec![viewport])
             .unwrap();
 
-        let sun_color = if light_count > 0 {
-            gpu_lights[0].color
-        } else {
-            [1.0, 1.0, 1.0]
-        };
-        
-        let sky_push = SkyPush {
-            sun_direction: [0.0, 1.0, 1.0],
-            sun_intensity: 1.0,
-            sun_color,
-            _pad0: 0.0,
-            sky_top: sky_top.to_array(),
-            _pad1: 0.0,
-            sky_bottom: sky_bottom.to_array(),
-            _pad2: 0.0,
-            _pad3: [0.0; 4],
-            star_density,
-            star_brightness,
-            star_seed,
-            _pad4: 0.0,
-        };
-
         builder
-            .bind_pipeline_graphics(sky_pipeline.clone())
-            .unwrap()
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                sky_pipeline.layout().clone(),
-                0,
-                descriptor_set.clone(),
+            .next_subpass(
+                SubpassEndInfo::default(),
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
             )
             .unwrap();
 
-        unsafe {
-            builder
-                .push_constants(sky_pipeline.layout().clone(), 0, sky_push)
-                .unwrap()
-                .draw(3, 1, 0, 0)
-                .unwrap();
-        }
+        if let Some(dd) = ui.filter(|d| d.total_vtx_count > 0) {
+            let [dw, dh] = dd.display_size;
+            let [ox, oy] = dd.display_pos;
 
-        if !self.draw_list.is_empty() {
+            let mut verts: Vec<UiVertex> = Vec::with_capacity(dd.total_vtx_count as usize);
+            let mut idxs: Vec<u16> = Vec::with_capacity(dd.total_idx_count as usize);
+            for l in dd.draw_lists() {
+                verts.extend(l.vtx_buffer().iter().map(|v| UiVertex {
+                    pos: v.pos,
+                    uv: v.uv,
+                    col: v.col,
+                }));
+                idxs.extend_from_slice(l.idx_buffer());
+            }
+
+            let ma = self.memory_allocator.clone().unwrap();
+            let host = AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            };
+            let vb = Buffer::from_iter(
+                ma.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                host.clone(),
+                verts,
+            )
+            .unwrap();
+            let ib = Buffer::from_iter(
+                ma,
+                BufferCreateInfo {
+                    usage: BufferUsage::INDEX_BUFFER,
+                    ..Default::default()
+                },
+                host,
+                idxs,
+            )
+            .unwrap();
+
+            let pipe = self.ui_pipeline.clone().unwrap();
             builder
-                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .bind_pipeline_graphics(pipe.clone())
                 .unwrap()
-                .bind_vertex_buffers(0, self.vertex_buffer.as_ref().unwrap().clone())
-                .unwrap()
-                .bind_index_buffer(self.index_buffer.as_ref().unwrap().clone())
-                .unwrap()
-                .bind_descriptor_sets(
-                    PipelineBindPoint::Graphics,
-                    graphics_pipeline.layout().clone(),
+                .set_viewport(
                     0,
-                    descriptor_set,
+                    smallvec![Viewport {
+                        offset: [0.0, 0.0],
+                        extent: [dw, dh],
+                        depth_range: 0.0..=1.0,
+                    }],
                 )
+                .unwrap()
+                .bind_vertex_buffers(0, vb)
+                .unwrap()
+                .bind_index_buffer(ib)
                 .unwrap();
 
-            for obj in &self.draw_list {
-                let relative_position = obj.position.camera_relative_f32(camera.position);
-                let model = Mat4::from_scale_rotation_translation(
-                    obj.scale,
-                    obj.rotation,
-                    relative_position,
-                );
-                unsafe {
-                    builder
-                        .push_constants(
-                            graphics_pipeline.layout().clone(),
-                            0,
-                            ModelPush {
-                                model: model.to_cols_array_2d(),
-                                emissive: obj.emissive,
-                            },
-                        )
-                        .unwrap();
-                    builder
-                        .draw_indexed(
-                            obj.index_count,
-                            1,
-                            obj.base_index,
-                            obj.base_vertex as i32,
-                            0,
-                        )
-                        .unwrap();
+            let s = [2.0 / dw, 2.0 / dh];
+            let pc: [f32; 4] = [s[0], s[1], -1.0 - ox * s[0], -1.0 - oy * s[1]];
+            unsafe {
+                builder
+                    .push_constants(pipe.layout().clone(), 0, pc)
+                    .unwrap();
+            }
+
+            let mut voff = 0i32;
+            let mut ioff = 0u32;
+            for l in dd.draw_lists() {
+                for cmd in l.commands() {
+                    if let imgui::DrawCmd::Elements { count, cmd_params } = cmd {
+                        let c = cmd_params.clip_rect;
+                        let x0 = (c[0] - ox).max(0.0);
+                        let y0 = (c[1] - oy).max(0.0);
+                        let x1 = c[2] - ox;
+                        let y1 = c[3] - oy;
+                        if x1 <= x0 || y1 <= y0 {
+                            continue;
+                        }
+
+                        let set = if cmd_params.texture_id.id() == self.viewport_tex_id.id() {
+                            self.viewport_descriptor.clone().unwrap()
+                        } else {
+                            self.ui_font_set.clone().unwrap()
+                        };
+
+                        builder
+                            .bind_descriptor_sets(
+                                PipelineBindPoint::Graphics,
+                                pipe.layout().clone(),
+                                0,
+                                set,
+                            )
+                            .unwrap()
+                            .set_scissor(
+                                0,
+                                smallvec![Scissor {
+                                    offset: [x0 as u32, y0 as u32],
+                                    extent: [(x1 - x0) as u32, (y1 - y0) as u32],
+                                }],
+                            )
+                            .unwrap();
+
+                        unsafe {
+                            builder
+                                .draw_indexed(
+                                    count as u32,
+                                    1,
+                                    ioff + cmd_params.idx_offset as u32,
+                                    voff + cmd_params.vtx_offset as i32,
+                                    0,
+                                )
+                                .unwrap();
+                        }
+                    }
                 }
+                voff += l.vtx_buffer().len() as i32;
+                ioff += l.idx_buffer().len() as u32;
             }
         }
 
@@ -1252,6 +1466,8 @@ impl Renderer {
         let command_buffer = builder.build().unwrap();
 
         let boxed = acquire_future
+            .then_execute(queue.clone(), scene_cb)
+            .unwrap()
             .then_execute(queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
@@ -1264,6 +1480,171 @@ impl Renderer {
 
         self.in_flight[frame] = Some(future);
         self.frame_index = (frame + 1) % FRAMES_IN_FLIGHT;
+    }
+
+    pub fn init_ui(&mut self, ctx: &mut imgui::Context) {
+        use vulkano::{
+            command_buffer::CopyBufferToImageInfo,
+            image::{
+                ImageCreateInfo, ImageType,
+                sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+            },
+            pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState},
+            render_pass::Subpass,
+        };
+
+        let device = self.device.clone().unwrap();
+        let queue = self.queue.clone().unwrap();
+        let ma = self.memory_allocator.clone().unwrap();
+        let render_pass = self.render_pass.clone().unwrap();
+
+        let vs = shaders::ui_vertex::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = shaders::ui_fragment::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs.clone()),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+
+        let mut layout_info = PipelineDescriptorSetLayoutCreateInfo::from_stages(stages.iter())
+            .into_pipeline_layout_create_info(device.clone())
+            .unwrap();
+        layout_info.push_constant_ranges = vec![PushConstantRange {
+            stages: ShaderStages::VERTEX,
+            offset: 0,
+            size: 16,
+        }];
+        let layout = PipelineLayout::new(device.clone(), layout_info).unwrap();
+
+        let mut info = GraphicsPipelineCreateInfo::layout(layout);
+        info.stages = stages.into_iter().collect();
+        info.vertex_input_state = Some(UiVertex::per_vertex().definition(&vs).unwrap());
+        info.input_assembly_state = Some(InputAssemblyState::default());
+        info.viewport_state = Some(ViewportState::default());
+        info.dynamic_state.insert(DynamicState::Viewport);
+        info.dynamic_state.insert(DynamicState::Scissor);
+        info.rasterization_state = Some(RasterizationState {
+            cull_mode: CullMode::None,
+            ..Default::default()
+        });
+        info.multisample_state = Some(MultisampleState::default());
+        info.color_blend_state = Some(ColorBlendState::with_attachment_states(
+            1,
+            ColorBlendAttachmentState {
+                blend: Some(AttachmentBlend::alpha()),
+                ..Default::default()
+            },
+        ));
+        info.subpass = Some(Subpass::from(render_pass, 1).unwrap().into());
+        let pipeline = GraphicsPipeline::new(device.clone(), None, info).unwrap();
+
+        let (staging, w, h) = {
+            let tex = ctx.fonts().build_rgba32_texture();
+            let staging = Buffer::from_iter(
+                ma.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                tex.data.iter().copied(),
+            )
+            .unwrap();
+            (staging, tex.width, tex.height)
+        };
+
+        let image = Image::new(
+            ma,
+            ImageCreateInfo {
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_UNORM,
+                extent: [w, h, 1],
+                usage: ImageUsage::SAMPLED | ImageUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+
+        let mut b = AutoCommandBufferBuilder::primary(
+            self.command_buffer_allocator.clone().unwrap(),
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+        b.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(staging, image.clone()))
+            .unwrap();
+        sync::now(device.clone())
+            .then_execute(queue, b.build().unwrap())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        let view = ImageView::new_default(image).unwrap();
+        let sampler = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone().unwrap(),
+            pipeline.layout().set_layouts()[0].clone(),
+            [WriteDescriptorSet::image_view_sampler(0, view, sampler)],
+            [],
+        )
+        .unwrap();
+
+        ctx.fonts().tex_id = imgui::TextureId::new(0);
+        self.ui_pipeline = Some(pipeline);
+        self.ui_font_set = Some(set);
+
+        let viewport_sampler = Sampler::new(
+            self.device.clone().unwrap(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let viewport_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone().unwrap(),
+            self.ui_pipeline
+                .as_ref()
+                .unwrap()
+                .layout()
+                .set_layouts()[0]
+                .clone(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                self.viewport_color_view.clone().unwrap(),
+                viewport_sampler.clone(),
+            )],
+            [],
+        )
+        .unwrap();
+
+        self.viewport_sampler = Some(viewport_sampler);
+        self.viewport_descriptor = Some(viewport_set);
     }
 
     pub fn request_swapchain_recreation(&mut self) {

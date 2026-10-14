@@ -24,6 +24,7 @@ fn main() {
     let mut winman = Win::new();
     let mut renderer = engine::render::renderer::Renderer::new();
     let mut player = engine::player::Player::new();
+    let mut eui = engine::ui::editor::EditorUi::new();
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
@@ -49,8 +50,13 @@ fn main() {
 
     logger.break_line();
 
+    let mut imgui = imgui::Context::create();
+    imgui.set_ini_filename(None);
+    
     winman.update(&mut event_loop);
     renderer.init(winman.window.as_ref().unwrap());
+    renderer.init_ui(&mut imgui);
+    eui.viewport_tex_id = Some(renderer.viewport_tex_id());
 
     // INPUT ACTIONS
     winman
@@ -107,21 +113,28 @@ fn main() {
             winman.resized = false;
         }
 
-        /*for event in winman.update() {
-            match event {
-                //Event::MouseMotion { timestamp, window_id, which, mousestate, x, y, xrel, yrel }
-                sdl3::event::Event::MouseMotion {
-                    x, y, xrel, yrel, ..
-                } => {
-                    input.process_event(InputEvent::MouseMotion {
-                        position: [x, y],
-                        delta: [xrel, yrel],
-                    });
+        {
+            let io = imgui.io_mut();
+            for ev in winman.ui_events.drain(..) {
+                match ev {
+                    engine::render::window::UiEvent::MousePos(p) => io.add_mouse_pos_event(p),
+                    engine::render::window::UiEvent::MouseButton(b, down) => {
+                        io.add_mouse_button_event(b, down)
+                    }
+                    engine::render::window::UiEvent::Wheel(w) => io.add_mouse_wheel_event(w),
+                    engine::render::window::UiEvent::Key(k, down) => io.add_key_event(k, down),
+                    engine::render::window::UiEvent::Char(c) => io.add_input_character(c),
+                    engine::render::window::UiEvent::Mods { ctrl, shift, alt, sup } => {
+                        io.add_key_event(imgui::Key::ModCtrl, ctrl);
+                        io.add_key_event(imgui::Key::ModShift, shift);
+                        io.add_key_event(imgui::Key::ModAlt, alt);
+                        io.add_key_event(imgui::Key::ModSuper, sup);
+                    }
                 }
-
-                _ => {}
             }
-        }*/
+        }
+
+        let ui_wants_mouse = imgui.io().want_capture_mouse;
 
         // INPUT
         let speed;
@@ -138,15 +151,16 @@ fn main() {
         let [mdx, mdy] = winman.input.mouse_delta();
         let m_sens = 0.02;
 
-        if winman
-            .input
-            .is_mouse_button_just_pressed(MouseButton::Right)
+        if eui.hovering_viewport
+            && winman
+                .input
+                .is_mouse_button_just_pressed(MouseButton::Right)
         {
             drag_start = winman.last_mouse_pos;
             winman.set_relative_mouse_mode(true);
         }
 
-        if winman.input.is_mouse_button_pressed(MouseButton::Right) {
+        if eui.hovering_viewport && winman.input.is_mouse_button_pressed(MouseButton::Right) {
             engine.camera.rotate(-mdx * m_sens, -mdy * m_sens);
 
             if winman.input.is_action_pressed("mv_forward") {
@@ -197,18 +211,22 @@ fn main() {
         engine.camera.follow(&player);
         engine.update();
 
-        renderer.render(winman.window.as_ref().unwrap(), &mut engine);
+        let window = winman.window.as_ref().unwrap();
+        let ext = engine::render::renderer::logical_extent(window);
 
-        /*if player.position != last_pos {
-            logger.log(&format!(
-                "Player pos: ({:.2}, {:.2}, {:.2})",
-                player.position.x, player.position.y, player.position.z
-            ));
+        let io = imgui.io_mut();
+        io.display_size = [ext[0] as f32, ext[1] as f32];
+        io.display_framebuffer_scale = [1.0, 1.0];
+        io.update_delta_time(std::time::Duration::from_secs_f32((dt as f32).max(0.0001)));
 
-            last_pos = player.position;
-        }*/
+        let ui = imgui.new_frame();
+        eui.draw(&ui, &mut engine, &mut player, &fps);
+        renderer.set_viewport_size(eui.viewport_size);
+        let draw_data = imgui.render();
 
-        fps.update(&logger);
+        renderer.render(window, &mut engine, Some(draw_data));
+
+        fps.update();
         engine.limit_fps(frame_start);
         engine.update_delta();
     }

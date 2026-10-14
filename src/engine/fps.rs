@@ -16,7 +16,7 @@ impl FpsCounter {
         }
     }
 
-    pub fn update(&mut self, logger: &Console) {
+    pub fn update(&mut self) {
         self.frames += 1;
 
         let elapsed = self.last.elapsed();
@@ -24,12 +24,10 @@ impl FpsCounter {
             self.fps = self.frames as f32 / self.last.elapsed().as_secs_f32();
             self.frames = 0;
             self.last = Instant::now();
-
-            logger.log_debug(format_args!("{} FPS", self.fps.round()));
         }
     }
 
-    /*pub fn fps(&self) -> f32 {
+    pub fn get_fps(&self) -> f32 {
         self.fps
-    }*/
+    }
 }
