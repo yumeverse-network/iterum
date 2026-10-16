@@ -8,11 +8,11 @@ use crate::engine::physics::{Physics, PhysicsWorld, Shape};
 use crate::engine::transform::Transform;
 
 pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
-    /*world.spawn(GlobalSky {
+    world.spawn(GlobalSky {
         sky_top: Vec3::new(0.02, 0.08, 0.22),
         sky_bottom: Vec3::new(0.45, 0.65, 0.95),
-    });*/
-    world.spawn(GlobalSky {
+    });
+    /*world.spawn(GlobalSky {
         sky_top: Vec3::ZERO,
         sky_bottom: Vec3::ZERO,
     });
@@ -20,7 +20,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         density: 10.0,
         brightness: 1.5,
         seed: 3210.0,
-    });
+    });*/
 
     // Spawn planet
     world.spawn((
