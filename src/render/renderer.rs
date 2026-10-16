@@ -1,10 +1,14 @@
 use crate::nodes::planet::Star;
+use bevy_ecs::entity::Entity;
 use crate::nodes::sky::{GlobalSky, GlobalSpace};
 use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
 use vulkano::image::sampler::Sampler;
 use std::sync::Arc;
-use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthStencilState};
+use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorComponents};
+use vulkano::pipeline::graphics::depth_stencil::{
+    CompareOp, DepthStencilState, StencilOp, StencilOpState, StencilOps, StencilState,
+};
 use vulkano::pipeline::graphics::vertex_input::VertexInputState;
 use vulkano::swapchain::PresentMode;
 use vulkano::sync::fence::{Fence, FenceCreateFlags, FenceCreateInfo};
@@ -60,6 +64,27 @@ const MAX_VERTICES: u64 = 16_000_000;
 const MAX_INDICES: u64 = 48_000_000;
 const MAX_LIGHTS: usize = 8;
 const FRAMES_IN_FLIGHT: usize = 2;
+const DEPTH_FORMAT: Format = Format::D32_SFLOAT_S8_UINT;
+
+fn stencil_state(
+    compare_op: CompareOp,
+    pass_op: StencilOp,
+    reference: u32,
+    write_mask: u32,
+) -> StencilState {
+    let s = StencilOpState {
+        ops: StencilOps {
+            fail_op: StencilOp::Keep,
+            pass_op,
+            depth_fail_op: StencilOp::Keep,
+            compare_op,
+        },
+        compare_mask: 0xFF,
+        write_mask,
+        reference,
+    };
+    StencilState { front: s, back: s }
+}
 
 #[derive(BufferContents, Copy, Clone)]
 #[repr(C)]
@@ -71,6 +96,7 @@ struct GpuLight {
 }
 
 struct DrawObject {
+    entity: Entity,
     base_vertex: u32,
     base_index: u32,
     index_count: u32,
@@ -172,6 +198,8 @@ pub struct Renderer {
     viewport_sampler: Option<Arc<Sampler>>,
     viewport_descriptor: Option<Arc<DescriptorSet>>,
     viewport_tex_id: imgui::TextureId,
+    outline_pipeline: Option<Arc<GraphicsPipeline>>,
+    mask_pipeline: Option<Arc<GraphicsPipeline>>,
 }
 
 #[derive(BufferContents, Copy, Clone)]
@@ -270,6 +298,8 @@ impl Renderer {
             viewport_sampler: None,
             viewport_descriptor: None,
             viewport_tex_id: imgui::TextureId::new(1),
+            outline_pipeline: None,
+            mask_pipeline: None,
         }
     }
 
@@ -322,7 +352,7 @@ impl Renderer {
         let depth_image = Image::new(
             ma,
             vulkano::image::ImageCreateInfo {
-                format: Format::D32_SFLOAT,
+                format: DEPTH_FORMAT,
                 extent: [extent[0].max(1), extent[1].max(1), 1],
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                 ..Default::default()
@@ -505,7 +535,7 @@ impl Renderer {
                     store_op: Store,
                 },
                 depth: {
-                    format: Format::D32_SFLOAT,
+                    format: DEPTH_FORMAT,
                     samples: 1,
                     load_op: Clear,
                     store_op: DontCare,
@@ -560,12 +590,10 @@ impl Renderer {
         });
         pipeline_info.multisample_state = Some(MultisampleState::default());
 
-        pipeline_info.depth_stencil_state = Some(
-            vulkano::pipeline::graphics::depth_stencil::DepthStencilState {
-                depth: Some(DepthState::simple()),
-                ..Default::default()
-            },
-        );
+        pipeline_info.depth_stencil_state = Some(DepthStencilState {
+            depth: Some(DepthState::simple()),
+            ..Default::default()
+        });
 
         pipeline_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
             1,
@@ -576,6 +604,101 @@ impl Renderer {
 
         let graphics_pipeline = GraphicsPipeline::new(device.clone(), None, pipeline_info)
             .expect("failed to create graphics pipeline");
+
+        let mut mask_info = GraphicsPipelineCreateInfo::layout(graphics_pipeline.layout().clone());
+        mask_info.stages = [
+            PipelineShaderStageCreateInfo::new(vertex_entry.clone()),
+            PipelineShaderStageCreateInfo::new(fragment_entry.clone()),
+        ]
+        .into_iter()
+        .collect();
+        mask_info.vertex_input_state =
+            Some(Vertices::per_vertex().definition(&vertex_entry).unwrap());
+        mask_info.input_assembly_state = Some(InputAssemblyState::default());
+        mask_info.viewport_state = Some(ViewportState::default());
+        mask_info.dynamic_state.insert(DynamicState::Viewport);
+        mask_info.rasterization_state = Some(RasterizationState {
+            cull_mode: CullMode::Back,
+            front_face: FrontFace::CounterClockwise,
+            ..Default::default()
+        });
+        mask_info.multisample_state = Some(MultisampleState::default());
+        mask_info.depth_stencil_state = Some(DepthStencilState {
+            depth: Some(DepthState {
+                write_enable: false,
+                compare_op: CompareOp::Always,
+                ..Default::default()
+            }),
+            stencil: Some(stencil_state(
+                CompareOp::Always,
+                StencilOp::Replace,
+                1,
+                0xFF,
+            )),
+            ..Default::default()
+        });
+        mask_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
+            1,
+            ColorBlendAttachmentState {
+                color_write_mask: ColorComponents::empty(),
+                ..Default::default()
+            },
+        ));
+        mask_info.subpass = Some(render_pass.clone().first_subpass().into());
+
+        let mask_pipeline = GraphicsPipeline::new(device.clone(), None, mask_info)
+            .expect("failed to create mask pipeline");
+
+        let outline_vertex_shader = shaders::outline_vertex::load(device.clone())
+            .expect("failed to load outline vertex shader");
+        let outline_fragment_shader = shaders::outline_fragment::load(device.clone())
+            .expect("failed to load outline fragment shader");
+
+        let outline_vertex_entry = outline_vertex_shader.entry_point("main").unwrap();
+        let outline_fragment_entry = outline_fragment_shader.entry_point("main").unwrap();
+
+        let outline_stages = [
+            PipelineShaderStageCreateInfo::new(outline_vertex_entry.clone()),
+            PipelineShaderStageCreateInfo::new(outline_fragment_entry),
+        ];
+
+        let mut outline_info =
+            GraphicsPipelineCreateInfo::layout(graphics_pipeline.layout().clone());
+
+        outline_info.stages = outline_stages.into_iter().collect();
+        outline_info.vertex_input_state =
+            Some(Vertices::per_vertex().definition(&outline_vertex_entry).unwrap());
+        outline_info.input_assembly_state = Some(InputAssemblyState::default());
+        outline_info.viewport_state = Some(ViewportState::default());
+        outline_info.dynamic_state.insert(DynamicState::Viewport);
+        outline_info.rasterization_state = Some(RasterizationState {
+            cull_mode: CullMode::Front,
+            front_face: FrontFace::CounterClockwise,
+            ..Default::default()
+        });
+        outline_info.multisample_state = Some(MultisampleState::default());
+        outline_info.depth_stencil_state = Some(DepthStencilState {
+            depth: Some(DepthState {
+                compare_op: CompareOp::Always,
+                write_enable: false,
+                ..Default::default()
+            }),
+            stencil: Some(stencil_state(
+                CompareOp::NotEqual,
+                StencilOp::Keep,
+                1,
+                0x00,
+            )),
+            ..Default::default()
+        });
+        outline_info.color_blend_state = Some(ColorBlendState::with_attachment_states(
+            1,
+            Default::default(),
+        ));
+        outline_info.subpass = Some(render_pass.clone().first_subpass().into());
+
+        let outline_pipeline = GraphicsPipeline::new(device.clone(), None, outline_info)
+            .expect("failed to create outline pipeline");
 
         let sky_vertex_shader = shaders::sky_vertex::load(device.clone()).unwrap();
         let sky_fragment_shader = shaders::sky_fragment::load(device.clone()).unwrap();
@@ -642,7 +765,7 @@ impl Renderer {
                 let depth_image = Image::new(
                     memory_allocator.clone(),
                     vulkano::image::ImageCreateInfo {
-                        format: Format::D32_SFLOAT,
+                        format: DEPTH_FORMAT,
                         extent: [dimensions[0], dimensions[1], 1],
                         usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                         ..Default::default()
@@ -765,6 +888,8 @@ impl Renderer {
         self.framebuffers = framebuffers;
         self.command_buffer_allocator = Some(command_buffer_allocator);
         self.graphics_pipeline = Some(graphics_pipeline);
+        self.outline_pipeline = Some(outline_pipeline);
+        self.mask_pipeline = Some(mask_pipeline);
         self.vertex_buffer = Some(vertex_buffer);
         self.index_buffer = Some(index_buffer);
         self.descriptor_set_allocator = Some(descriptor_set_allocator);
@@ -910,6 +1035,7 @@ impl Renderer {
         &mut self,
         window: &winit::window::Window,
         engine: &mut Engine,
+        selected_entity: Option<Entity>,
         ui: Option<&imgui::DrawData>,
     ) {
         if self.recreate_swapchain {
@@ -949,7 +1075,7 @@ impl Renderer {
                     let depth_image = Image::new(
                         self.memory_allocator.as_ref().unwrap().clone(),
                         vulkano::image::ImageCreateInfo {
-                            format: Format::D32_SFLOAT,
+                            format: DEPTH_FORMAT,
                             extent: [dimensions[0], dimensions[1], 1],
                             usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                             ..Default::default()
@@ -999,6 +1125,8 @@ impl Renderer {
         let queue = self.queue.as_ref().unwrap().clone();
         let swapchain = self.swapchain.as_ref().unwrap().clone();
         let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap().clone();
+        let outline_pipeline = self.outline_pipeline.as_ref().unwrap().clone();
+        let mask_pipeline = self.mask_pipeline.as_ref().unwrap().clone();
         let sky_pipeline = self.sky_pipeline.as_ref().unwrap().clone();
 
         let camera = &engine.camera;
@@ -1064,9 +1192,9 @@ impl Renderer {
 
         self.draw_list.clear();
 
-        for (transform, mesh, star) in engine
+        for (entity, transform, mesh, star) in engine
             .world
-            .query::<(&Transform, &Mesh, Option<&Star>)>()
+            .query::<(Entity, &Transform, &Mesh, Option<&Star>)>()
             .iter(&engine.world)
         {
             let rel = transform.position.camera_relative_f32(camera.position);
@@ -1093,6 +1221,7 @@ impl Renderer {
             }
 
             self.draw_list.push(DrawObject {
+                entity,
                 base_vertex,
                 base_index,
                 index_count,
@@ -1197,7 +1326,10 @@ impl Renderer {
         scene_builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.02, 0.02, 0.02, 1.0].into()), Some(1.0f32.into())],
+                    clear_values: vec![
+                        Some([0.02, 0.02, 0.02, 1.0].into()),
+                        Some((1.0f32, 0u32).into()),
+                    ],
                     ..RenderPassBeginInfo::framebuffer(
                         self.viewport_framebuffer.clone().unwrap(),
                     )
@@ -1287,6 +1419,52 @@ impl Renderer {
             }
         }
 
+        if let Some(obj) = selected_entity
+            .and_then(|entity| self.draw_list.iter().find(|obj| obj.entity == entity))
+        {
+            let relative_position = obj.position.camera_relative_f32(camera.position);
+            let model = Mat4::from_scale_rotation_translation(
+                obj.scale,
+                obj.rotation,
+                relative_position,
+            );
+            let push = ModelPush {
+                model: model.to_cols_array_2d(),
+                emissive: [0.0; 4],
+            };
+
+            for pipe in [&mask_pipeline, &outline_pipeline] {
+                scene_builder
+                    .bind_pipeline_graphics(pipe.clone())
+                    .unwrap()
+                    .bind_vertex_buffers(0, self.vertex_buffer.as_ref().unwrap().clone())
+                    .unwrap()
+                    .bind_index_buffer(self.index_buffer.as_ref().unwrap().clone())
+                    .unwrap()
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        pipe.layout().clone(),
+                        0,
+                        self.scene_descriptors[frame].clone(),
+                    )
+                    .unwrap();
+
+                unsafe {
+                    scene_builder
+                        .push_constants(pipe.layout().clone(), 0, push)
+                        .unwrap()
+                        .draw_indexed(
+                            obj.index_count,
+                            1,
+                            obj.base_index,
+                            obj.base_vertex as i32,
+                            0,
+                        )
+                        .unwrap();
+                }
+            }
+        }
+
         scene_builder
             .next_subpass(
                 SubpassEndInfo::default(),
@@ -1313,7 +1491,10 @@ impl Renderer {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.02, 0.02, 0.02, 1.0].into()), Some(1.0f32.into())],
+                    clear_values: vec![
+                        Some([0.02, 0.02, 0.02, 1.0].into()),
+                        Some((1.0f32, 0u32).into()),
+                    ],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
                 SubpassBeginInfo {
@@ -1483,7 +1664,7 @@ impl Renderer {
                 ImageCreateInfo, ImageType,
                 sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
             },
-            pipeline::graphics::color_blend::{AttachmentBlend, ColorBlendAttachmentState},
+            pipeline::graphics::color_blend::AttachmentBlend,
             render_pass::Subpass,
         };
 

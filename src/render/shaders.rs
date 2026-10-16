@@ -69,3 +69,18 @@ pub mod ui_fragment {
         "#
     }
 }
+
+// UI Selection Outline
+pub mod outline_vertex {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        path: "assets/shaders/outline.vert",
+    }
+}
+
+pub mod outline_fragment {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        path: "assets/shaders/outline.frag",
+    }
+}

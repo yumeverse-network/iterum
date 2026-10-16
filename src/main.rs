@@ -245,7 +245,7 @@ fn main() {
         renderer.set_viewport_size(eui.viewport_size);
         let draw_data = imgui.render();
 
-        renderer.render(window, &mut engine, Some(draw_data));
+        renderer.render(window, &mut engine, eui.selection.selected, Some(draw_data));
 
         fps.update();
         engine.limit_fps(frame_start);
