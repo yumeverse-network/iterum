@@ -1,4 +1,5 @@
 use std::f64::consts::FRAC_PI_2;
+use crate::nodes::Name;
 
 use bevy_ecs::prelude::{Component, Entity, World};
 use glam::{DVec3, Quat};
@@ -8,8 +9,8 @@ use rapier3d_f64::prelude::{
     RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SoftBodySet,
 };
 
-use crate::engine::mesh::Mesh;
-use crate::engine::transform::Transform;
+use crate::mesh::Mesh;
+use crate::transform::Transform;
 
 pub const FIXED_DT: f64 = 1.0 / 60.0;
 
@@ -151,6 +152,7 @@ impl PhysicsWorld {
     pub fn spawn(
         &mut self,
         world: &mut World,
+        name: Name,
         transform: Transform,
         mesh: Mesh,
         physics: Physics,
@@ -177,6 +179,7 @@ impl PhysicsWorld {
 
         world
             .spawn((
+                name,
                 transform,
                 mesh,
                 PhysicsBody(body_handle),

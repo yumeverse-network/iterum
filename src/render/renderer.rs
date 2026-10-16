@@ -1,5 +1,5 @@
-use crate::engine::nodes::planet::Star;
-use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
+use crate::nodes::planet::Star;
+use crate::nodes::sky::{GlobalSky, GlobalSpace};
 use glam::{DVec3, Mat4, Vec3};
 use smallvec::smallvec;
 use vulkano::image::sampler::Sampler;
@@ -50,11 +50,11 @@ use vulkano::{
     sync::{self, GpuFuture},
 };
 
-use crate::engine::Engine;
-use crate::engine::console;
-use crate::engine::mesh::{Mesh, Vertices};
-use crate::engine::render::shaders;
-use crate::engine::transform::{Transform, WorldPositionExt};
+use crate::Engine;
+use crate::console;
+use crate::mesh::{Mesh, Vertices};
+use crate::render::shaders;
+use crate::transform::{Transform, WorldPositionExt};
 
 const MAX_VERTICES: u64 = 16_000_000;
 const MAX_INDICES: u64 = 48_000_000;
@@ -142,7 +142,6 @@ pub struct Renderer {
     elapsed: f32,
     recreate_swapchain: bool,
     startup_nudge: bool,
-    msaa_samples: SampleCount,
     pending_msaa_samples: Option<SampleCount>,
     descriptor_set_allocator: Option<Arc<StandardDescriptorSetAllocator>>,
     sky_pipeline: Option<Arc<GraphicsPipeline>>,
@@ -150,7 +149,6 @@ pub struct Renderer {
     index_buffer: Option<Subbuffer<[u32]>>,
     staging_buffers: Vec<Subbuffer<[Vertices]>>,
     index_staging_buffers: Vec<Subbuffer<[u32]>>,
-    uploaded_vertex_count: usize,
     mesh_allocs: std::collections::HashMap<u64, (u32, u32)>,
     index_allocs: std::collections::HashMap<u64, (u32, u32)>,
     next_free_vertex: u32,
@@ -242,7 +240,6 @@ impl Renderer {
             elapsed: 0.0,
             recreate_swapchain: false,
             startup_nudge: true,
-            msaa_samples: SampleCount::Sample1,
             pending_msaa_samples: None,
             descriptor_set_allocator: None,
             sky_pipeline: None,
@@ -250,7 +247,6 @@ impl Renderer {
             index_buffer: None,
             staging_buffers: Vec::new(),
             index_staging_buffers: Vec::new(),
-            uploaded_vertex_count: 0,
             mesh_allocs: std::collections::HashMap::new(),
             index_allocs: std::collections::HashMap::new(),
             next_free_vertex: 0,
@@ -1401,11 +1397,9 @@ impl Renderer {
 
             let s = [2.0 / dw, 2.0 / dh];
             let pc: [f32; 4] = [s[0], s[1], -1.0 - ox * s[0], -1.0 - oy * s[1]];
-            unsafe {
-                builder
-                    .push_constants(pipe.layout().clone(), 0, pc)
-                    .unwrap();
-            }
+            builder
+                .push_constants(pipe.layout().clone(), 0, pc)
+                .unwrap();
 
             let mut voff = 0i32;
             let mut ioff = 0u32;
@@ -1648,10 +1642,6 @@ impl Renderer {
     }
 
     pub fn request_swapchain_recreation(&mut self) {
-        self.recreate_swapchain = true;
-    }
-
-    fn rebuild_render_targets(&mut self, _window: &winit::window::Window) {
         self.recreate_swapchain = true;
     }
 }

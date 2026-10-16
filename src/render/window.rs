@@ -8,7 +8,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::engine::input::{InputEvent, InputManager, Key, MouseButton};
+use crate::input::{InputEvent, InputManager, Key, MouseButton};
 
 pub enum UiEvent {
     MousePos([f32; 2]),
@@ -64,8 +64,8 @@ impl ApplicationHandler for Win {
 
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: DeviceEvent,
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {
@@ -79,7 +79,7 @@ impl ApplicationHandler for Win {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _window_id: WindowId,
         event: WindowEvent,
     ) {
         match event {
@@ -90,19 +90,7 @@ impl ApplicationHandler for Win {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
-
-            /*WindowEvent::KeyboardInput { event, .. } => {
-                if let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
-                    if let Some(key) = Key::from_scancode(code) {
-                        self.input.process_event(InputEvent::Key {
-                            key,
-                            pressed: event.state == ElementState::Pressed,
-                            repeat: false,
-                        });
-                    }
-                }
-            }*/
-
+            
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
 
@@ -138,13 +126,6 @@ impl ApplicationHandler for Win {
                 });
             }
 
-            /*WindowEvent::MouseInput { state, button, .. } => {
-                self.input.process_event(InputEvent::MouseButton {
-                    button: MouseButton::from_winit(button),
-                    pressed: state == ElementState::Pressed,
-                });
-            }*/
-
             WindowEvent::MouseInput { state, button, .. } => {
                 let pressed = state == ElementState::Pressed;
 
@@ -173,10 +154,6 @@ impl ApplicationHandler for Win {
                 };
                 self.ui_events.push(UiEvent::Wheel([x, y]));
             }
-
-            /*WindowEvent::CursorMoved { position, .. } => {
-                self.last_mouse_pos = Some([position.x as f32, position.y as f32]);
-            }*/
 
             WindowEvent::CursorMoved { position, .. } => {
                 self.last_mouse_pos = Some([position.x as f32, position.y as f32]);

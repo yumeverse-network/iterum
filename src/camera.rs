@@ -1,6 +1,6 @@
 use glam::{DVec3, Quat};
 
-use crate::engine::player::Player;
+use crate::player::Player;
 
 pub const CAM_NEAR: f32 = 0.1;
 pub const CAM_FAR: f32 = 1.0e13;

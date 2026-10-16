@@ -1,9 +1,13 @@
-use crate::engine::Engine;
-use crate::engine::console::console_lines;
-use crate::engine::fps::FpsCounter;
-use crate::engine::player::Player;
+use bevy_ecs::entity::Entity;
+
+use crate::Engine;
+use crate::console::console_lines;
+use crate::editor::tools::selection::EditorSelection;
+use crate::fps::FpsCounter;
+use crate::player::Player;
 
 pub struct EditorUi {
+    pub selection: EditorSelection,
     pub show_demo: bool,
     pub show_right: bool,
     pub show_bottom: bool,
@@ -24,6 +28,7 @@ pub struct EditorUi {
 impl EditorUi {
     pub fn new() -> Self {
         Self {
+            selection: EditorSelection::default(),
             show_demo: false,
             show_right: true,
             show_bottom: true,
@@ -83,11 +88,6 @@ impl EditorUi {
                 .flags(ui_flags)
                 .build(|| {
                     let y = ui.cursor_pos()[1];
-                
-                    ui.set_cursor_pos([0.0, y]);
-                    if ui.button_with_size("Create Object", [80.0, 0.0]) {
-                        println!("Create Object");
-                    }
                 
                     ui.same_line();
                     ui.radio_button("Selection", &mut self.editor_mode, 0); ui.same_line();
@@ -174,6 +174,28 @@ impl EditorUi {
                             {
                                 engine.camera.far = self.camera_far;
                             }
+
+                            ui.new_line();
+                            ui.separator();
+                            ui.new_line();
+
+                            let mut p = [
+                                player.position.x as f32,
+                                player.position.y as f32,
+                                player.position.z as f32,
+                            ];
+                            if ui.input_float3("Position", &mut p).build() {
+                                player.position.x = p[0] as f64;
+                                player.position.y = p[1] as f64;
+                                player.position.z = p[2] as f64;
+                            }
+                            ui.slider_config("Speed", 1.0, 1.0e6)
+                                .build(&mut self.move_speed);
+                            ui.slider_config("Fast speed", 1.0, 1.0e12)
+                                .build(&mut self.fast_speed);
+                            if ui.button("Reset") {
+                                player.position = glam::DVec3::ZERO;
+                            }
                         }
                         if let Some(_tab2) = ui.tab_item("Something") {
                             ui.text("Nothing");
@@ -194,23 +216,27 @@ impl EditorUi {
                 .build(|| {
                     if let Some(_tab_bar) = ui.tab_bar("Tabs") {
                         if let Some(_tab1) = ui.tab_item("Hierarchy") {
-                            let mut p = [
-                                player.position.x as f32,
-                                player.position.y as f32,
-                                player.position.z as f32,
-                            ];
-                            if ui.input_float3("Position", &mut p).build() {
-                                player.position.x = p[0] as f64;
-                                player.position.y = p[1] as f64;
-                                player.position.z = p[2] as f64;
+                            if ui.button_with_size("Create Object", [80.0, 0.0]) {
+                                println!("Create Object");
                             }
-                            ui.slider_config("Speed", 1.0, 1.0e6)
-                                .build(&mut self.move_speed);
-                            ui.slider_config("Fast speed", 1.0, 1.0e12)
-                                .build(&mut self.fast_speed);
-                            if ui.button("Reset") {
-                                player.position = glam::DVec3::ZERO;
-                            }
+
+                            ui.child_window("Ents")
+                                .build(|| {
+                                    let entities: Vec<_> = engine.world
+                                        .query::<(Entity, &crate::nodes::Name)>()
+                                        .iter(&engine.world)
+                                        .map(|(entity, name)| (entity, name.0.clone()))
+                                        .collect();
+        
+                                    for (entity, name) in entities {
+                                        if ui.selectable_config(&name)
+                                            .selected(self.selection.selected == Some(entity))
+                                            .build()
+                                        {
+                                            self.selection.selected = Some(entity);
+                                        }
+                                    }
+                                });
                         }
                         if let Some(_tab2) = ui.tab_item("Unknown") {
                             ui.text("Tab 2");

@@ -1,4 +1,3 @@
-use crate::engine::console::Console;
 use std::time::{Duration, Instant};
 
 pub struct FpsCounter {

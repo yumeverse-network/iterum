@@ -1,17 +1,21 @@
 use bevy_ecs::prelude::*;
 use glam::{DVec3, Quat, Vec3};
 
-use crate::engine::mesh::Mesh;
-use crate::engine::nodes::planet::Star;
-use crate::engine::nodes::sky::{GlobalSky, GlobalSpace};
-use crate::engine::physics::{Physics, PhysicsWorld, Shape};
-use crate::engine::transform::Transform;
+use crate::nodes::Name;
+use crate::mesh::Mesh;
+use crate::nodes::planet::Star;
+use crate::nodes::sky::{GlobalSky, GlobalSpace};
+use crate::physics::{Physics, PhysicsWorld, Shape};
+use crate::transform::Transform;
 
 pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
-    world.spawn(GlobalSky {
-        sky_top: Vec3::new(0.02, 0.08, 0.22),
-        sky_bottom: Vec3::new(0.45, 0.65, 0.95),
-    });
+    world.spawn((
+        Name("Sky".into()),
+        GlobalSky {
+            sky_top: Vec3::new(0.02, 0.08, 0.22),
+            sky_bottom: Vec3::new(0.45, 0.65, 0.95),
+        }
+    ));
     /*world.spawn(GlobalSky {
         sky_top: Vec3::ZERO,
         sky_bottom: Vec3::ZERO,
@@ -24,6 +28,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
 
     // Spawn planet
     world.spawn((
+        Name("Planet".into()),
         Transform {
             position: DVec3::new(0.0, 0.0, -1.0e9),
             rotation: Quat::IDENTITY,
@@ -34,6 +39,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
 
     // Spawn star /& sun
     world.spawn((
+        Name("Star".into()),
         Transform {
             position: DVec3::new(-2.0e9, 1.0e2, -1.0e7),
             rotation: Quat::IDENTITY,
@@ -46,6 +52,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         },
     ));
     world.spawn((
+        Name("Star".into()),
         Transform {
             position: DVec3::new(2.0e9, 1.0e9, 1.0e9),
             rotation: Quat::IDENTITY,
@@ -58,8 +65,8 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         },
     ));
 
-    // Cube with ID so it can be modified
     world.spawn((
+        Name("Cube".into()),
         Transform {
             position: DVec3::new(0.0, 0.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -69,6 +76,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Icosphere".into()),
         Transform {
             position: DVec3::new(2.5, 0.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -78,6 +86,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Plane".into()),
         Transform {
             position: DVec3::new(5.0, 0.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -87,6 +96,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Triangle".into()),
         Transform {
             position: DVec3::new(0.0, 2.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -96,6 +106,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Circle".into()),
         Transform {
             position: DVec3::new(2.5, 2.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -105,6 +116,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Cylinder".into()),
         Transform {
             position: DVec3::new(5.0, 2.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -114,6 +126,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Tube".into()),
         Transform {
             position: DVec3::new(0.0, 5.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -123,6 +136,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Disc".into()),
         Transform {
             position: DVec3::new(2.5, 5.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -132,6 +146,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Cone".into()),
         Transform {
             position: DVec3::new(5.0, 5.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -141,6 +156,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Prism".into()),
         Transform {
             position: DVec3::new(0.0, 7.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -150,6 +166,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Pyramid".into()),
         Transform {
             position: DVec3::new(2.5, 7.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -159,6 +176,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("UV Sphere".into()),
         Transform {
             position: DVec3::new(5.0, 7.5, -10.0),
             rotation: Quat::IDENTITY,
@@ -168,6 +186,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Hemisphere".into()),
         Transform {
             position: DVec3::new(0.0, 10.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -177,6 +196,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Capsule".into()),
         Transform {
             position: DVec3::new(-2.5, 1.0, -10.0),
             rotation: Quat::IDENTITY,
@@ -186,6 +206,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     ));
 
     world.spawn((
+        Name("Another Cube".into()),
         Transform {
             position: DVec3::new(0.0, -2.5, 0.0),
             rotation: Quat::IDENTITY,
@@ -199,6 +220,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     // 
     physics.spawn(
         world,
+        Name("Another Cube".into()),
         Transform {
             position: DVec3::new(0.0, -2.5, 0.0),
             rotation: Quat::IDENTITY,
@@ -210,6 +232,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     
     physics.spawn(
         world,
+        Name("Yet Another Cube".into()),
         Transform { position: DVec3::new(0.0, 3.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
         Mesh::cube(),
         Physics::dynamic(Shape::CUBE),
@@ -217,6 +240,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     
     physics.spawn(
         world,
+        Name("Sphere".into()),
         Transform { position: DVec3::new(2.5, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
         Mesh::icosphere(3),
         Physics::dynamic(Shape::SPHERE).restitution(0.8),
@@ -224,18 +248,21 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     
     physics.spawn(
         world,
+        Name("Capsuleee".into()),
         Transform { position: DVec3::new(-2.5, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
         Mesh::capsule(6, 6, 1.0, 2.0),
         Physics::dynamic(Shape::Capsule { radius: 1.0, height: 2.0 }),
     );
     physics.spawn(
         world,
+        Name("Cone".into()),
         Transform { position: DVec3::new(5.0, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
         Mesh::cone(6, 1.0),
         Physics::dynamic(Shape::Cone { radius: 1.0 }),
     );
     physics.spawn(
         world,
+        Name("Rolling Cylinder".into()),
         Transform { position: DVec3::new(5.0, 10.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
         Mesh::cylinder(6, 1.0, 1.0),
         Physics::dynamic(Shape::Cylinder { radius: 1.0, half_depth: 1.0 }),
@@ -243,6 +270,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
     
     physics.spawn(
         world,
+        Name("Convex Hull".into()),
         Transform { position: DVec3::new(0.0, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::splat(0.5) },
         Mesh::pyramid(),
         Physics::dynamic(Shape::ConvexHull),

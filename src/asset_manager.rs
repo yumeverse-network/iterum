@@ -1,4 +1,4 @@
-use crate::engine::console::Console;
+use crate::console::Console;
 
 pub struct AssetManager {
     logger: Console,
