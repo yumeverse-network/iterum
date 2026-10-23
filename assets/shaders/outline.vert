@@ -32,30 +32,17 @@ layout(push_constant) uniform Push {
     vec4 emissive;
 } pc;
 
+const float OUTLINE_WIDTH = 0.05;
+
 void main() {
+    mat3 m3 = mat3(pc.model);
+
+    float scale = (length(m3[0]) + length(m3[1]) + length(m3[2])) / 3.0;
+
+    vec3 world_normal = normalize(transpose(inverse(m3)) * normal);
+
     vec4 world_position = pc.model * vec4(position, 1.0);
-    vec3 world_normal = normalize(
-        transpose(inverse(mat3(pc.model))) * normal
-    );
+    world_position.xyz += world_normal * OUTLINE_WIDTH * scale;
 
-    vec4 clip_position = projection * view * world_position;
-    vec4 clip_normal = projection * view * vec4(world_normal, 0.0);
-
-    vec2 screen_normal =
-        clip_normal.xy * clip_position.w -
-        clip_position.xy * clip_normal.w;
-
-    float normal_length = length(screen_normal);
-
-    if (normal_length > 0.00001) {
-        float aspect = projection[1][1] / projection[0][0];
-        vec2 pixel_normal = normalize(
-            vec2(screen_normal.x * aspect, screen_normal.y)
-        );
-
-        vec2 offset = vec2(pixel_normal.x / aspect, pixel_normal.y) * 0.009;
-        clip_position.xy += offset * clip_position.w;
-    }
-
-    gl_Position = clip_position;
+    gl_Position = projection * view * world_position;
 }
