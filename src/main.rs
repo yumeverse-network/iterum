@@ -2,17 +2,17 @@ pub mod asset_manager;
 pub mod audio_manager;
 pub mod camera;
 pub mod console;
+pub mod editor;
 pub mod emath;
 pub mod fps;
 pub mod fs_utils;
-pub mod mesh;
-pub mod player;
-pub mod transform;
 pub mod input;
+pub mod mesh;
 pub mod nodes;
 pub mod physics;
+pub mod player;
 pub mod render;
-pub mod editor;
+pub mod transform;
 
 pub mod test_scene;
 
@@ -72,6 +72,10 @@ fn main() {
     assets._mount_iia("hi.iia");
 
     logger.break_line();
+
+    // engine img stuff to be added, but examples for later use
+    static EXAMPLE_IMG: &[u8] = include_bytes!("../assets/textures/paper.png");
+    let (w, h, pixels) = engine.load_image(EXAMPLE_IMG);
 
     let mut imgui = imgui::Context::create();
     imgui.set_ini_filename(None);
@@ -147,7 +151,12 @@ fn main() {
                     render::window::UiEvent::Wheel(w) => io.add_mouse_wheel_event(w),
                     render::window::UiEvent::Key(k, down) => io.add_key_event(k, down),
                     render::window::UiEvent::Char(c) => io.add_input_character(c),
-                    render::window::UiEvent::Mods { ctrl, shift, alt, sup } => {
+                    render::window::UiEvent::Mods {
+                        ctrl,
+                        shift,
+                        alt,
+                        sup,
+                    } => {
                         io.add_key_event(imgui::Key::ModCtrl, ctrl);
                         io.add_key_event(imgui::Key::ModShift, shift);
                         io.add_key_event(imgui::Key::ModAlt, alt);
@@ -396,5 +405,10 @@ impl Engine {
                 }
             }
         }
+    }
+
+    pub fn load_image(&self, bytes: &[u8]) -> (u32, u32, Vec<u8>) {
+        let img = image::load_from_memory(bytes).unwrap().to_rgba8();
+        (img.width(), img.height(), img.into_raw())
     }
 }

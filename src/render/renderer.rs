@@ -748,7 +748,7 @@ impl Renderer {
                 image_extent: dimensions.into(),
                 image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                 composite_alpha,
-                present_mode: PresentMode::Immediate,
+                present_mode: PresentMode::Fifo, // Immediate and Fifo works on all, Mailbox doesn't work on MacOS
                 ..Default::default()
             },
         )

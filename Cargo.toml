@@ -44,3 +44,4 @@ netcorehost = "0.22.0" # C# scripting
 MathUtils = "1.0.1" # Math library
 imgui = "0.12.0" # ImGui
 imgui-winit-support = "0.13.0" # ImGui Winit
+image = "0.25.10" # Images cuz imgs
