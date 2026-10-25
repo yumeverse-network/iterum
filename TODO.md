@@ -1,5 +1,7 @@
 # TODO
 
+## Main
+
 - [ ] ImGui colour change
 - [ ] Virtual Geometry Streaming (Load in what we see, unload what we don't need)
 - [ ] Clusters (Turning multiple triangles into a "block"
@@ -11,3 +13,11 @@
       behind object anyways?)
 - [ ] Compute SW Raster (Turning single pixels into actual single pixels
       so we don't waste computing power)
+
+## Experimental
+
+- [ ] Object relative vertices position
+      (Subdivide the object into multiple vertices clusters,
+      then get the origin of each of the clusters and get the
+      vertices position relative to cluster location, and then
+      get the cluster location relative to the object)
