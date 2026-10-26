@@ -16,8 +16,9 @@
 
 ## Experimental
 
-- [ ] Object relative vertices position
+- [ ] Object relative vertices clusters
       (Subdivide the object into multiple vertices clusters,
       then get the origin of each of the clusters and get the
       vertices position relative to cluster location, and then
-      get the cluster location relative to the object)
+      get the cluster location relative to the object.)
+      (Edit: These are called meshlets...)
