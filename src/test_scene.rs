@@ -34,7 +34,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
             rotation: Quat::IDENTITY,
             scale: Vec3::splat(6.96e8),
         },
-        Mesh::icosphere(3),
+        Mesh::icosphere(9),
     ));
 
     // Spawn star /& sun
@@ -82,7 +82,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
         },
-        Mesh::icosphere(9),
+        Mesh::icosphere(3),
     ));
 
     world.spawn((

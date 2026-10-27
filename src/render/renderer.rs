@@ -55,6 +55,7 @@ use vulkano::{
 };
 
 use crate::Engine;
+use crate::physics::PhysicsBody;
 use crate::console;
 use crate::mesh::{Mesh, Vertices};
 use crate::render::shaders;
@@ -64,6 +65,10 @@ const MAX_VERTICES: u64 = 16_000_000;
 const MAX_INDICES: u64 = 48_000_000;
 const MAX_LIGHTS: usize = 8;
 const FRAMES_IN_FLIGHT: usize = 2;
+const PHYSICS_MESH_LOAD_DISTANCE: f32 = 10_000.0;
+const PHYSICS_MESH_UNLOAD_DISTANCE: f32 = 10_000.0;
+const STATIC_MESH_LOAD_DISTANCE: f32 = 100_000_000_000.0; //f32::MAX / 10000.0;
+const STATIC_MESH_UNLOAD_DISTANCE: f32 = 100_000_000_000.0; //f32::MAX / 10000.0;
 const DEPTH_FORMAT: Format = Format::D32_SFLOAT_S8_UINT;
 
 fn stencil_state(
@@ -176,7 +181,10 @@ pub struct Renderer {
     staging_buffers: Vec<Subbuffer<[Vertices]>>,
     index_staging_buffers: Vec<Subbuffer<[u32]>>,
     mesh_allocs: std::collections::HashMap<u64, (u32, u32)>,
-    index_allocs: std::collections::HashMap<u64, (u32, u32)>,
+    //index_allocs: std::collections::HashMap<u64, (u32, u32)>,
+    index_allocs: std::collections::HashMap<u64, Vec<(u32, u32)>>,
+    free_vertex_ranges: Vec<(u32, u32)>,
+    free_index_ranges: Vec<(u32, u32)>,
     next_free_vertex: u32,
     next_free_index: u32,
     scene_uniforms: Vec<Subbuffer<SceneUniform>>,
@@ -277,6 +285,8 @@ impl Renderer {
             index_staging_buffers: Vec::new(),
             mesh_allocs: std::collections::HashMap::new(),
             index_allocs: std::collections::HashMap::new(),
+            free_vertex_ranges: Vec::new(),
+            free_index_ranges: Vec::new(),
             next_free_vertex: 0,
             next_free_index: 0,
             scene_uniforms: Vec::new(),
@@ -909,57 +919,172 @@ impl Renderer {
         self.viewport_depth_view = Some(depth_view);
         self.viewport_framebuffer = Some(fb);
     }
+    
+    fn allocate_range(
+        free_ranges: &mut Vec<(u32, u32)>,
+        next_free: &mut u32,
+        count: u32,
+        capacity: u64,
+    ) -> u32 {
+        if let Some(i) = free_ranges.iter().position(|&(_, len)| len >= count) {
+            let (start, len) = free_ranges[i];
+            if len == count {
+                free_ranges.swap_remove(i);
+            } else {
+                free_ranges[i] = (start + count, len - count);
+            }
+            return start;
+        }
+
+        assert!(
+            *next_free as u64 + count as u64 <= capacity,
+            "GPU buffer pool overflow"
+        );
+
+        let start = *next_free;
+        *next_free += count;
+        start
+    }
+
+    fn free_range(
+        free_ranges: &mut Vec<(u32, u32)>,
+        next_free: &mut u32,
+        start: u32,
+        count: u32,
+    ) {
+        if count == 0 {
+            return;
+        }
+
+        free_ranges.push((start, count));
+        free_ranges.sort_unstable_by_key(|range| range.0);
+
+        let mut merged: Vec<(u32, u32)> = Vec::with_capacity(free_ranges.len());
+        for (range_start, range_count) in free_ranges.drain(..) {
+            if let Some(last) = merged.last_mut() {
+                let last_end = last.0 + last.1;
+                let range_end = range_start + range_count;
+                if range_start <= last_end {
+                    last.1 = last_end.max(range_end) - last.0;
+                    continue;
+                }
+            }
+            merged.push((range_start, range_count));
+        }
+        *free_ranges = merged;
+
+        loop {
+            let Some(&(range_start, range_count)) = free_ranges.last() else {
+                break;
+            };
+            if range_start + range_count != *next_free {
+                break;
+            }
+            free_ranges.pop();
+            *next_free = range_start;
+        }
+    }
+
+    fn unload_mesh(&mut self, id: u64) {
+        if let Some((start, count)) = self.mesh_allocs.remove(&id) {
+            Self::free_range(
+                &mut self.free_vertex_ranges,
+                &mut self.next_free_vertex,
+                start,
+                count,
+            );
+        }
+
+        if let Some(lods) = self.index_allocs.remove(&id) {
+            if let Some(&(start, _)) = lods.first() {
+                let count: u32 = lods.iter().map(|(_, count)| *count).sum();
+                Self::free_range(
+                    &mut self.free_index_ranges,
+                    &mut self.next_free_index,
+                    start,
+                    count,
+                );
+            }
+        }
+    }
 
     pub fn upload_mesh(&mut self, mesh: &Mesh) {
-        if self.mesh_allocs.contains_key(&mesh.id) && self.index_allocs.contains_key(&mesh.id) {
-            return;
-        }
-
+        let expected = 1 + mesh.lods.len();
+            if let Some(a) = self.index_allocs.get(&mesh.id) {
+                if a.len() == expected { return; }
+        
+                for f in self.in_flight.iter_mut() {
+                    if let Some(p) = f.take() { p.wait(None).unwrap(); }
+                }
+                self.unload_mesh(mesh.id);
+            }
+    
         let vertex_count = mesh.vertices.len() as u32;
-        let index_count = mesh.indices.len() as u32;
-
-        if vertex_count == 0 || index_count == 0 {
+    
+        let all_lods: Vec<&[u32]> = std::iter::once(mesh.indices.as_slice())
+            .chain(mesh.lods.iter().map(|lod| lod.indices.as_slice()))
+            .collect();
+    
+        let total_index_count: u32 = all_lods
+            .iter()
+            .map(|indices| indices.len() as u32)
+            .sum();
+    
+        if vertex_count == 0 || total_index_count == 0 {
             self.mesh_allocs.insert(mesh.id, (0, 0));
-            self.index_allocs.insert(mesh.id, (0, 0));
+            self.index_allocs.insert(mesh.id, vec![(0, 0)]);
             return;
         }
 
-        let base_vertex = self.next_free_vertex;
-        let base_index = self.next_free_index;
-
-        assert!(
-            base_vertex as u64 + vertex_count as u64 <= MAX_VERTICES,
-            "vertex pool overflow: {} + {} > {}",
-            base_vertex,
+        let base_vertex = Self::allocate_range(
+            &mut self.free_vertex_ranges,
+            &mut self.next_free_vertex,
             vertex_count,
-            MAX_VERTICES
+            MAX_VERTICES,
         );
-        assert!(
-            base_index as u64 + index_count as u64 <= MAX_INDICES,
-            "index pool overflow: {} + {} > {}",
-            base_index,
-            index_count,
-            MAX_INDICES
+        let base_index = Self::allocate_range(
+            &mut self.free_index_ranges,
+            &mut self.next_free_index,
+            total_index_count,
+            MAX_INDICES,
         );
-
+    
         {
             let mut w = self.staging_buffers[0].write().unwrap();
             w[..vertex_count as usize].copy_from_slice(&mesh.vertices);
         }
+    
+        let mut lod_allocs = Vec::with_capacity(all_lods.len());
+        let mut offset = 0usize;
+    
         {
             let mut w = self.index_staging_buffers[0].write().unwrap();
-            w[..index_count as usize].copy_from_slice(&mesh.indices);
+    
+            for indices in &all_lods {
+                let count = indices.len();
+    
+                w[offset..offset + count].copy_from_slice(indices);
+    
+                lod_allocs.push((
+                    base_index + offset as u32,
+                    count as u32,
+                ));
+    
+                offset += count;
+            }
         }
-
+    
         let mut b = AutoCommandBufferBuilder::primary(
             self.command_buffer_allocator.as_ref().unwrap().clone(),
             self.queue.as_ref().unwrap().queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-
+    
         b.copy_buffer(CopyBufferInfo::buffers(
-            self.staging_buffers[0].clone().slice(0..vertex_count as u64),
+            self.staging_buffers[0]
+                .clone()
+                .slice(0..vertex_count as u64),
             self.vertex_buffer
                 .as_ref()
                 .unwrap()
@@ -967,20 +1092,21 @@ impl Renderer {
                 .slice(base_vertex as u64..(base_vertex + vertex_count) as u64),
         ))
         .unwrap();
-
+    
         b.copy_buffer(CopyBufferInfo::buffers(
             self.index_staging_buffers[0]
                 .clone()
-                .slice(0..index_count as u64),
+                .slice(0..total_index_count as u64),
             self.index_buffer
                 .as_ref()
                 .unwrap()
                 .clone()
-                .slice(base_index as u64..(base_index + index_count) as u64),
+                .slice(base_index as u64..(base_index + total_index_count) as u64),
         ))
         .unwrap();
-
+    
         let cb = b.build().unwrap();
+    
         sync::now(self.device.as_ref().unwrap().clone())
             .then_execute(self.queue.as_ref().unwrap().clone(), cb)
             .unwrap()
@@ -988,11 +1114,10 @@ impl Renderer {
             .unwrap()
             .wait(None)
             .unwrap();
-
-        self.mesh_allocs.insert(mesh.id, (base_vertex, vertex_count));
-        self.index_allocs.insert(mesh.id, (base_index, index_count));
-        self.next_free_vertex += vertex_count;
-        self.next_free_index += index_count;
+    
+        self.mesh_allocs
+            .insert(mesh.id, (base_vertex, vertex_count));
+        self.index_allocs.insert(mesh.id, lod_allocs);
     }
 
     fn recreate_viewport_targets(&mut self) {
@@ -1182,7 +1307,84 @@ impl Renderer {
         let view_proj = swapchain_projection * view_rel;
         let frustum = Frustum::from_view_proj(view_proj, view_rel);
 
-        for mesh in engine.world.query::<&Mesh>().iter(&engine.world) {
+        let mut resident_meshes = std::collections::HashMap::<u64, &Mesh>::new();
+        let mut resident_ids = std::collections::HashSet::<u64>::new();
+        
+        for (transform, mesh, physics) in engine
+            .world
+            .query::<(&Transform, &Mesh, Option<&PhysicsBody>)>()
+            .iter(&engine.world)
+        {
+            let rel = transform.position.camera_relative_f32(camera.position);
+            if !rel.is_finite() {
+                continue;
+            }
+            let distance = rel.length();
+            let (load_limit, unload_limit) = if physics.is_some() {
+                (PHYSICS_MESH_LOAD_DISTANCE, PHYSICS_MESH_UNLOAD_DISTANCE)
+            } else {
+                (STATIC_MESH_LOAD_DISTANCE, STATIC_MESH_UNLOAD_DISTANCE)
+            };
+            let limit = if self.mesh_allocs.contains_key(&mesh.id) {
+                unload_limit
+            } else {
+                load_limit
+            };
+            let resident = distance <= limit;
+        
+            if resident {
+                resident_ids.insert(mesh.id);
+                resident_meshes.entry(mesh.id).or_insert(mesh);
+            }
+        }
+        
+        let unload_ids: Vec<u64> = self
+            .mesh_allocs
+            .keys()
+            .filter(|id| !resident_ids.contains(*id))
+            .copied()
+            .collect();
+        
+        if !unload_ids.is_empty() {
+            for pending in self.in_flight.iter_mut() {
+                if let Some(future) = pending.take() {
+                    future.wait(None).unwrap();
+                }
+            }
+        
+            for id in unload_ids {
+                self.unload_mesh(id);
+            }
+        }
+        
+        for mesh in resident_meshes.values() {
+            if !self.mesh_allocs.contains_key(&mesh.id)
+                || !self.index_allocs.contains_key(&mesh.id)
+            {
+                self.upload_mesh(mesh);
+            }
+        }
+
+        let unload_ids: Vec<u64> = self
+            .mesh_allocs
+            .keys()
+            .filter(|id| !resident_ids.contains(*id))
+            .copied()
+            .collect();
+
+        if !unload_ids.is_empty() {
+            for pending in self.in_flight.iter_mut() {
+                if let Some(future) = pending.take() {
+                    future.wait(None).unwrap();
+                }
+            }
+
+            for id in unload_ids {
+                self.unload_mesh(id);
+            }
+        }
+
+        for mesh in resident_meshes.values() {
             if !self.mesh_allocs.contains_key(&mesh.id)
                 || !self.index_allocs.contains_key(&mesh.id)
             {
@@ -1212,7 +1414,18 @@ impl Renderer {
             let Some(&(base_vertex, vertex_count)) = self.mesh_allocs.get(&mesh.id) else {
                 continue;
             };
-            let Some(&(base_index, index_count)) = self.index_allocs.get(&mesh.id) else {
+
+            let distance = rel.length().max(0.001);
+            let radius = world_radius.max(0.001);
+            
+            let screen = radius / (distance * (camera.fov.to_radians() * 0.5).tan());
+            let lod_index = if screen > 0.25 { 0 } else if screen > 0.08 { 1 } else if screen > 0.02 { 2 } else { 3 };
+
+            let Some(&(base_index, index_count)) = self
+                .index_allocs
+                .get(&mesh.id)
+                .and_then(|lods| lods.get(lod_index.min(lods.len().saturating_sub(1))))
+            else {
                 continue;
             };
 

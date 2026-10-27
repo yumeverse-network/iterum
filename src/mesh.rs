@@ -6,6 +6,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
+pub struct MeshLod {
+    pub indices: Vec<u32>,
+    pub error: f32,
+}
+
 static NEXT_MESH_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
@@ -93,6 +98,7 @@ pub struct Mesh {
     pub id: u64,
     pub vertices: Vec<Vertices>,
     pub indices: Vec<u32>,
+    pub lods: Vec<MeshLod>,
     pub bounds: Bounds,
 }
 
@@ -112,14 +118,89 @@ impl Mesh {
         }
 
         unique.shrink_to_fit();
-
+        
         let bounds = Bounds::from_vertices(&unique);
-        Self {
+        
+        let mut mesh = Self {
             id: NEXT_MESH_ID.fetch_add(1, Ordering::Relaxed),
             vertices: unique,
             indices,
+            lods: Vec::new(),
             bounds,
+        };
+        
+        if mesh.indices.len() / 3 > 100 {
+            mesh.generate_lods()
+                .expect("Failed to generate mesh LODs");
         }
+        
+        mesh
+    }
+
+    fn from_indexed(vertices: Vec<Vertices>, indices: Vec<u32>) -> Self {
+        let bounds = Bounds::from_vertices(&vertices);
+        let mut mesh = Self {
+            id: NEXT_MESH_ID.fetch_add(1, Ordering::Relaxed),
+            vertices,
+            indices,
+            lods: Vec::new(),
+            bounds,
+        };
+        if mesh.indices.len() / 3 > 100 {
+            if let Err(e) = mesh.generate_lods() {
+                eprintln!("LOD generation skipped: {e:?}");
+                mesh.lods.clear();
+            }
+        }
+        mesh
+    }
+
+    pub fn generate_lods(&mut self) -> Result<(), meshoptimizer_rs::Error> {
+        let positions: Vec<[f32; 3]> = self
+            .vertices
+            .iter()
+            .map(|v| v.position)
+            .collect();
+    
+        let mut workspace = meshoptimizer_rs::Workspace::default();
+    
+        self.lods.clear();
+
+        // Amount of detail loss for the LOD subdivision
+        for divisor in [16, 64, 256] {
+            let target_index_count = (self.indices.len() / divisor / 3) * 3;
+        
+            let result = meshoptimizer_rs::simplify(
+                &self.indices,
+                meshoptimizer_rs::Positions::from_packed(&positions),
+                meshoptimizer_rs::SimplifySettings {
+                    target_index_count,
+                    target_error: 0.042, // How much detail loss is acceptable
+                    options: meshoptimizer_rs::SimplifyOptions::EMPTY,
+                },
+                &mut workspace,
+            )?;
+        
+            println!(
+                "LOD divisor {divisor}: target {} triangles, actual {} triangles, error {}",
+                target_index_count / 3,
+                result.indices.len() / 3,
+                result.error,
+            );
+
+            let prev_len = self.lods.last().map(|l| l.indices.len()).unwrap_or(self.indices.len());
+            if result.indices.len() >= prev_len {
+                continue; // no reduction, don't store a duplicate LOD
+            }
+            self.lods.push(MeshLod { indices: result.indices, error: result.error });
+        
+            /*self.lods.push(MeshLod {
+                indices: result.indices,
+                error: result.error,
+            });*/
+        }
+    
+        Ok(())
     }
 
     // Cube
@@ -257,7 +338,7 @@ impl Mesh {
             triangles = next_triangles;
         }
 
-        let mut vertices = Vec::with_capacity(triangles.len() * 3);
+        /*let mut vertices = Vec::with_capacity(triangles.len() * 3);
 
         for [a, b, c] in triangles {
             for index in [a, b, c] {
@@ -266,7 +347,11 @@ impl Mesh {
             }
         }
 
-        Self::new(vertices)
+        Self::new(vertices)*/
+
+        let vertices: Vec<Vertices> = positions.iter().map(|&p| v(p, p)).collect();
+        let indices: Vec<u32> = triangles.iter().flatten().copied().collect();
+        Self::from_indexed(vertices, indices)
     }
 
     // Plane
