@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 
 use crate::Engine;
 use crate::console::console_lines;
-use crate::editor::tools::selection::EditorSelection;
+use crate::tools::selection::EditorSelection;
 use crate::fps::FpsCounter;
 use crate::player::Player;
 

@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::sync::Arc;
 use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
 use winit::{
     application::ApplicationHandler,
@@ -45,7 +46,7 @@ fn map_key(code: winit::keyboard::KeyCode) -> Option<imgui::Key> {
 
 #[derive(Default)]
 pub struct Win {
-    pub window: Option<winit::window::Window>,
+    pub window: Option<Arc<winit::window::Window>>,
     pub resized: bool,
     pub input: InputManager,
     pub last_mouse_pos: Option<[f32; 2]>,
@@ -59,7 +60,7 @@ impl ApplicationHandler for Win {
             .with_inner_size(winit::dpi::LogicalSize::new(1280, 720)) // 800, 600
             .with_resizable(true);
 
-        self.window = Some(event_loop.create_window(win_attributes).unwrap());
+        self.window = Some(Arc::new(event_loop.create_window(win_attributes).unwrap()));
     }
 
     fn device_event(

@@ -1,0 +1,31 @@
+[package]
+name = "iterum-engine"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+glam.workspace = true
+bytemuck.workspace = true
+chrono.workspace = true
+wgpu.workspace = true
+raw-window-handle.workspace = true
+winit.workspace = true
+bevy_ecs.workspace = true
+rapier3d-f64.workspace = true
+mimalloc.workspace = true
+dirs.workspace = true
+smallvec.workspace = true
+netcorehost.workspace = true
+MathUtils.workspace = true
+imgui.workspace = true
+image.workspace = true
+meshoptimizer-rs.workspace = true
+anyhow.workspace = true
+log.workspace = true
+pollster.workspace = true
+
+[build-dependencies]
+csbindgen = "1"

@@ -3,8 +3,6 @@ use bevy_ecs::prelude::*;
 use glam::{DVec3, Vec3};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
-use vulkano::buffer::BufferContents;
-use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 pub struct MeshLod {
     pub indices: Vec<u32>,
@@ -13,13 +11,10 @@ pub struct MeshLod {
 
 static NEXT_MESH_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(BufferContents, Vertex, Copy, Clone)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 pub struct Vertices {
-    #[format(R32G32B32_SFLOAT)]
     pub position: [f32; 3],
-
-    #[format(R32G32B32_SFLOAT)]
     pub normal: [f32; 3],
 }
 
@@ -175,7 +170,7 @@ impl Mesh {
                 meshoptimizer_rs::Positions::from_packed(&positions),
                 meshoptimizer_rs::SimplifySettings {
                     target_index_count,
-                    target_error: 0.042, // How much detail loss is acceptable
+                    target_error: 0.042, // How much detail loss is acceptable. 0.042 is the most comfortable value tested.
                     options: meshoptimizer_rs::SimplifyOptions::EMPTY,
                 },
                 &mut workspace,

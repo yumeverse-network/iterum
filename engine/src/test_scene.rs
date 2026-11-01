@@ -1,8 +1,8 @@
 use bevy_ecs::prelude::*;
 use glam::{DVec3, Quat, Vec3};
 
-use crate::nodes::Name;
 use crate::mesh::Mesh;
+use crate::nodes::Name;
 use crate::nodes::planet::Star;
 use crate::nodes::sky::{GlobalSky, GlobalSpace};
 use crate::physics::{Physics, PhysicsWorld, Shape};
@@ -14,7 +14,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         GlobalSky {
             sky_top: Vec3::new(0.02, 0.08, 0.22),
             sky_bottom: Vec3::new(0.45, 0.65, 0.95),
-        }
+        },
     ));
     /*world.spawn(GlobalSky {
         sky_top: Vec3::ZERO,
@@ -34,7 +34,7 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
             rotation: Quat::IDENTITY,
             scale: Vec3::splat(6.96e8),
         },
-        Mesh::icosphere(9),
+        Mesh::icosphere(3), // 9
     ));
 
     // Spawn star /& sun
@@ -215,9 +215,9 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         Mesh::cube(),
     ));
 
-    // 
+    //
     // PHYSICS
-    // 
+    //
     physics.spawn(
         world,
         Name("Another Cube".into()),
@@ -229,49 +229,79 @@ pub fn spawn(world: &mut World, physics: &mut PhysicsWorld) {
         Mesh::cube(),
         Physics::fixed(Shape::CUBE),
     );
-    
+
     physics.spawn(
         world,
         Name("Yet Another Cube".into()),
-        Transform { position: DVec3::new(0.0, 3.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Transform {
+            position: DVec3::new(0.0, 3.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
         Mesh::cube(),
         Physics::dynamic(Shape::CUBE),
     );
-    
+
     physics.spawn(
         world,
         Name("Sphere".into()),
-        Transform { position: DVec3::new(2.5, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Transform {
+            position: DVec3::new(2.5, 8.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
         Mesh::icosphere(3),
         Physics::dynamic(Shape::SPHERE).restitution(0.8),
     );
-    
+
     physics.spawn(
         world,
         Name("Capsuleee".into()),
-        Transform { position: DVec3::new(-2.5, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Transform {
+            position: DVec3::new(-2.5, 5.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
         Mesh::capsule(6, 6, 1.0, 2.0),
-        Physics::dynamic(Shape::Capsule { radius: 1.0, height: 2.0 }),
+        Physics::dynamic(Shape::Capsule {
+            radius: 1.0,
+            height: 2.0,
+        }),
     );
     physics.spawn(
         world,
         Name("Cone".into()),
-        Transform { position: DVec3::new(5.0, 5.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Transform {
+            position: DVec3::new(5.0, 5.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
         Mesh::cone(6, 1.0),
         Physics::dynamic(Shape::Cone { radius: 1.0 }),
     );
     physics.spawn(
         world,
         Name("Rolling Cylinder".into()),
-        Transform { position: DVec3::new(5.0, 10.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::ONE },
+        Transform {
+            position: DVec3::new(5.0, 10.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+        },
         Mesh::cylinder(6, 1.0, 1.0),
-        Physics::dynamic(Shape::Cylinder { radius: 1.0, half_depth: 1.0 }),
+        Physics::dynamic(Shape::Cylinder {
+            radius: 1.0,
+            half_depth: 1.0,
+        }),
     );
-    
+
     physics.spawn(
         world,
         Name("Convex Hull".into()),
-        Transform { position: DVec3::new(0.0, 8.0, -10.0), rotation: Quat::IDENTITY, scale: Vec3::splat(0.5) },
+        Transform {
+            position: DVec3::new(0.0, 8.0, -10.0),
+            rotation: Quat::IDENTITY,
+            scale: Vec3::splat(0.5),
+        },
         Mesh::pyramid(),
         Physics::dynamic(Shape::ConvexHull),
     );

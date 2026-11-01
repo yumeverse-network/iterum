@@ -1,0 +1,16 @@
+[package]
+name = "iterum-editor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+iterum-engine = { path = "../engine" }
+bevy_ecs.workspace = true
+glam.workspace = true
+imgui.workspace = true
+imgui-winit-support.workspace = true
+winit.workspace = true
+mimalloc.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+pollster.workspace = true

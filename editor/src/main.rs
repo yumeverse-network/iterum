@@ -1,29 +1,10 @@
-pub mod asset_manager;
-pub mod audio_manager;
-pub mod camera;
-pub mod console;
-pub mod editor;
-pub mod emath;
-pub mod fps;
-pub mod fs_utils;
-pub mod input;
-pub mod mesh;
-pub mod nodes;
-pub mod physics;
-pub mod player;
-pub mod render;
-pub mod transform;
+pub use iterum_engine::*;
 
-pub mod test_scene;
+pub mod tools;
+pub mod ui;
 
-use bevy_ecs::world::World;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-pub use crate::camera::Camera;
-use crate::physics::PhysicsWorld;
-use crate::physics::{FIXED_DT, sync_transforms};
-
-pub use console::Console;
 
 use glam::{DQuat, DVec3};
 use mimalloc::MiMalloc;
@@ -47,7 +28,7 @@ fn main() {
     let mut winman = Win::new();
     let mut renderer = render::renderer::Renderer::new();
     let mut player = player::Player::new();
-    let mut eui = editor::ui::editor::EditorUi::new();
+    let mut eui = ui::editor::EditorUi::new();
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
@@ -74,15 +55,29 @@ fn main() {
     logger.break_line();
 
     // engine img stuff to be added, but examples for later use
-    static EXAMPLE_IMG: &[u8] = include_bytes!("../assets/textures/paper.png");
-    let (w, h, pixels) = engine.load_image(EXAMPLE_IMG);
+    static EXAMPLE_IMG: &[u8] = include_bytes!("../../assets/textures/paper.png");
+    let (_w, _h, _pixels) = engine.load_image(EXAMPLE_IMG);
 
     let mut imgui = imgui::Context::create();
     imgui.set_ini_filename(None);
 
     winman.update(&mut event_loop);
-    renderer.init(winman.window.as_ref().unwrap());
-    renderer.init_ui(&mut imgui);
+    if let Err(error) =
+        pollster::block_on(renderer.init(
+            std::sync::Arc::clone(winman.window.as_ref().unwrap()),
+            event_loop.owned_display_handle(),
+        ))
+    {
+        eprintln!("renderer initialization failed: {error:#}");
+        return;
+    }
+    let mut ui_renderer = ui::wgpu_renderer::UiRenderer::new(
+        renderer.device(),
+        renderer.queue(),
+        renderer.surface_config().format,
+        &mut imgui,
+        renderer.viewport_view(),
+    );
     eui.viewport_tex_id = Some(renderer.viewport_tex_id());
 
     // INPUT ACTIONS
@@ -137,6 +132,8 @@ fn main() {
         // WINDOW / INPUT EVENTS
         if winman.resized {
             renderer.request_swapchain_recreation();
+            let size = winman.window.as_ref().unwrap().inner_size();
+            renderer.resize(size.width, size.height);
             winman.resized = false;
         }
 
@@ -246,169 +243,46 @@ fn main() {
 
         let io = imgui.io_mut();
         io.display_size = [ext[0] as f32, ext[1] as f32];
-        io.display_framebuffer_scale = [1.0, 1.0];
+        let framebuffer_scale = window.scale_factor() as f32;
+        io.display_framebuffer_scale = [framebuffer_scale, framebuffer_scale];
         io.update_delta_time(std::time::Duration::from_secs_f32((dt as f32).max(0.0001)));
 
         let ui = imgui.new_frame();
         eui.draw(&ui, &mut engine, &mut player, &fps);
-        renderer.set_viewport_size(eui.viewport_size);
+        renderer.set_viewport_size([
+            (eui.viewport_size[0] as f32 * framebuffer_scale).round() as u32,
+            (eui.viewport_size[1] as f32 * framebuffer_scale).round() as u32,
+        ]);
         let draw_data = imgui.render();
 
-        renderer.render(window, &mut engine, eui.selection.selected, Some(draw_data));
+        renderer.render_scene(&mut engine, eui.selection.selected);
+        let size = window.inner_size();
+        let frame = match renderer.surface().get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
+                renderer.resize(size.width, size.height);
+                continue;
+            }
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => continue,
+            wgpu::CurrentSurfaceTexture::Validation => {
+                engine.quit();
+                break;
+            }
+        };
+        let surface_view = frame.texture.create_view(&Default::default());
+        ui_renderer.update_viewport(renderer.device(), renderer.viewport_view());
+        ui_renderer.render(
+            renderer.device(),
+            renderer.queue(),
+            draw_data,
+            &surface_view,
+            [size.width, size.height],
+        );
+        renderer.queue().present(frame);
 
         fps.update();
         engine.limit_fps(frame_start);
         engine.update_delta();
-    }
-}
-
-pub enum FrameLimit {
-    _Unlimited,
-    _Capped(u32),
-}
-
-pub struct Engine {
-    running: bool,
-    pub camera: Camera,
-    pub frame_limit: FrameLimit,
-    pub delta_time: Duration,
-    last_frame: Instant,
-    pub _on_update: Option<Box<dyn FnMut()>>,
-    pub _on_fixed_update: Option<Box<dyn FnMut()>>,
-    logger: Console,
-
-    // ECS
-    pub world: World,
-
-    // Physics
-    pub physics_world: PhysicsWorld,
-    physics_accumulator: f64,
-}
-
-impl Engine {
-    pub fn new() -> Self {
-        let mut camera = Camera::new();
-        camera.position = DVec3::new(2.0, 3.0, 5.0);
-
-        Engine {
-            running: true,
-            camera,
-            world: World::new(),
-            frame_limit: FrameLimit::_Capped(0),
-            delta_time: Duration::ZERO,
-            last_frame: Instant::now(),
-            _on_update: None,
-            _on_fixed_update: None,
-            logger: Console::new(),
-            physics_world: PhysicsWorld::new(),
-            physics_accumulator: 0.0,
-        }
-    }
-
-    pub fn init_world(&mut self) {
-        self.load_scene("test");
-    }
-
-    pub fn load_scene(&mut self, name: &str) {
-        self.world.clear_entities();
-        self.physics_world = PhysicsWorld::new();
-
-        match name {
-            "test" => test_scene::spawn(&mut self.world, &mut self.physics_world),
-            other => self.logger.log_system(&format!("Unknown scene: {other}")),
-        }
-
-        self.logger
-            .log_system(&format!("Entities: {}", self.world.entities().len()));
-    }
-
-    pub fn init(&self) {
-        let ver = option_env!("CARGO_PKG_VERSION").unwrap_or("Unknown");
-
-        self.logger.log_system("-+ Iterum Engine +-");
-        self.logger.log_system(format!("Version: {}", ver));
-        self.logger.break_line();
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.running
-    }
-
-    pub fn quit(&mut self) {
-        self.running = false;
-    }
-
-    pub fn update(&mut self) {
-        if let Some(ref mut callback) = self._on_update {
-            callback();
-        }
-    }
-
-    fn step_physics(&mut self) {
-        const MAX_STEPS: u32 = 5; // avoids the "spiral of death" after a lag spike
-        self.physics_accumulator += self.get_delta();
-
-        let mut steps = 0;
-        while self.physics_accumulator >= FIXED_DT && steps < MAX_STEPS {
-            if let Some(ref mut callback) = self._on_fixed_update {
-                callback();
-            }
-            self.physics_world.step();
-            self.physics_accumulator -= FIXED_DT;
-            steps += 1;
-        }
-        if steps == MAX_STEPS {
-            self.physics_accumulator = 0.0;
-        }
-
-        sync_transforms(&mut self.world, &self.physics_world);
-    }
-
-    pub fn _fixed_update(&mut self) {
-        if let Some(ref mut callback) = self._on_fixed_update {
-            callback();
-        }
-    }
-
-    pub fn update_delta(&mut self) {
-        let now = Instant::now();
-        let dt = now - self.last_frame;
-        self.delta_time = dt.min(Duration::from_secs_f64(0.1));
-        self.last_frame = now;
-
-        self.step_physics();
-    }
-
-    pub fn get_delta(&self) -> f64 {
-        self.delta_time.as_secs_f64()
-    }
-
-    pub fn limit_fps(&self, frame_start: Instant) {
-        match self.frame_limit {
-            FrameLimit::_Unlimited => {}
-
-            FrameLimit::_Capped(0) => {}
-
-            FrameLimit::_Capped(fps) => {
-                let target = Duration::from_secs_f64(1.0 / fps as f64);
-
-                while frame_start.elapsed() < target {
-                    let remaining = target
-                        .checked_sub(frame_start.elapsed())
-                        .unwrap_or_default();
-
-                    if remaining > Duration::from_millis(2) {
-                        std::thread::sleep(Duration::from_millis(1));
-                    } else {
-                        std::hint::spin_loop();
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn load_image(&self, bytes: &[u8]) -> (u32, u32, Vec<u8>) {
-        let img = image::load_from_memory(bytes).unwrap().to_rgba8();
-        (img.width(), img.height(), img.into_raw())
     }
 }
