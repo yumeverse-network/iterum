@@ -2,9 +2,9 @@ use bevy_ecs::entity::Entity;
 
 use crate::Engine;
 use crate::console::console_lines;
-use crate::tools::selection::EditorSelection;
 use crate::fps::FpsCounter;
 use crate::player::Player;
+use crate::tools::selection::EditorSelection;
 
 pub struct EditorUi {
     pub selection: EditorSelection,
@@ -80,7 +80,7 @@ impl EditorUi {
             let screen_width = ui.io().display_size[0];
             let total_width = 80.0 + 8.0 + 80.0 + 8.0 + 150.0;
             let start_x = (screen_width - total_width) / 2.0;
-        
+
             ui.window("Shelf")
                 .position([0.0, shelf_pos[1]], imgui::Condition::Always)
                 .size([screen_width, shelf_size[1]], imgui::Condition::Always)
@@ -88,23 +88,26 @@ impl EditorUi {
                 .flags(ui_flags)
                 .build(|| {
                     let y = ui.cursor_pos()[1];
-                
+
                     ui.same_line();
-                    ui.radio_button("Selection", &mut self.editor_mode, 0); ui.same_line();
-                    ui.radio_button("Move",      &mut self.editor_mode, 1); ui.same_line();
-                    ui.radio_button("Rotate",    &mut self.editor_mode, 2); ui.same_line();
-                    ui.radio_button("Scale",     &mut self.editor_mode, 3);
-                
+                    ui.radio_button("Selection", &mut self.editor_mode, 0);
+                    ui.same_line();
+                    ui.radio_button("Move", &mut self.editor_mode, 1);
+                    ui.same_line();
+                    ui.radio_button("Rotate", &mut self.editor_mode, 2);
+                    ui.same_line();
+                    ui.radio_button("Scale", &mut self.editor_mode, 3);
+
                     ui.set_cursor_pos([start_x, y]);
                     if ui.button_with_size("Play", [80.0, 0.0]) {
                         println!("Play");
                     }
-                
+
                     ui.set_cursor_pos([start_x + 88.0, y]);
                     if ui.button_with_size("Pause", [80.0, 0.0]) {
                         println!("Pause");
                     }
-                
+
                     ui.set_cursor_pos([start_x + 176.0, y]);
                     if ui.button_with_size("Advance Frame", [150.0, 0.0]) {
                         println!("Shoot...");
@@ -128,10 +131,8 @@ impl EditorUi {
                         if let Some(_tab1) = ui.tab_item("Scene") {
                             if let Some(tex) = self.viewport_tex_id {
                                 let avail = ui.content_region_avail();
-                                self.viewport_size = [
-                                    avail[0].max(1.0) as u32,
-                                    avail[1].max(1.0) as u32,
-                                ];
+                                self.viewport_size =
+                                    [avail[0].max(1.0) as u32, avail[1].max(1.0) as u32];
                                 imgui::Image::new(tex, avail).build(ui);
 
                                 self.hovering_viewport = ui.is_window_hovered();
@@ -220,23 +221,24 @@ impl EditorUi {
                                 println!("Create Object");
                             }
 
-                            ui.child_window("Ents")
-                                .build(|| {
-                                    let entities: Vec<_> = engine.world
-                                        .query::<(Entity, &crate::nodes::Name)>()
-                                        .iter(&engine.world)
-                                        .map(|(entity, name)| (entity, name.0.clone()))
-                                        .collect();
-        
-                                    for (entity, name) in entities {
-                                        if ui.selectable_config(&name)
-                                            .selected(self.selection.selected == Some(entity))
-                                            .build()
-                                        {
-                                            self.selection.selected = Some(entity);
-                                        }
+                            ui.child_window("Ents").build(|| {
+                                let entities: Vec<_> = engine
+                                    .world
+                                    .query::<(Entity, &crate::nodes::Name)>()
+                                    .iter(&engine.world)
+                                    .map(|(entity, name)| (entity, name.0.clone()))
+                                    .collect();
+
+                                for (entity, name) in entities {
+                                    if ui
+                                        .selectable_config(&name)
+                                        .selected(self.selection.selected == Some(entity))
+                                        .build()
+                                    {
+                                        self.selection.selected = Some(entity);
                                     }
-                                });
+                                }
+                            });
                         }
                         if let Some(_tab2) = ui.tab_item("Unknown") {
                             ui.text("Tab 2");
@@ -273,10 +275,9 @@ impl EditorUi {
                         if let Some(_tab3) = ui.tab_item("Performance") {
                             ui.text(format!("FPS:  {:.1}", fps.get_fps()));
                             ui.text(format!("dt:   {:.3} ms", engine.get_delta() * 1000.0));
-                            ui.text(format!(
-                                "Pos:  ({:.2}, {:.2}, {:.2})",
-                                player.position.x, player.position.y, player.position.z
-                            ));
+                            ui.separator();
+                            ui.text(format!("RAM: {} MB", engine.get_ram_usage()));
+                            ui.text(format!("VRAM: {} MB", engine.get_vram_usage().unwrap_or(0)));
                         }
                     }
                 });

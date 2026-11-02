@@ -10,6 +10,7 @@ pub mod mesh;
 pub mod nodes;
 pub mod physics;
 pub mod player;
+pub mod profiler;
 pub mod render;
 pub mod transform;
 
@@ -40,6 +41,11 @@ pub struct Engine {
     pub _on_update: Option<Box<dyn FnMut()>>,
     pub _on_fixed_update: Option<Box<dyn FnMut()>>,
     logger: Console,
+    last: Instant,
+
+    // Profiler
+    ram: u64,
+    vram: Option<u64>,
 
     // ECS
     pub world: World,
@@ -66,6 +72,9 @@ impl Engine {
             logger: Console::new(),
             physics_world: PhysicsWorld::new(),
             physics_accumulator: 0.0,
+            last: Instant::now(),
+            ram: profiler::get_ram_usage().unwrap(),
+            vram: profiler::get_vram_usage().unwrap(),
         }
     }
 
@@ -106,6 +115,15 @@ impl Engine {
         if let Some(ref mut callback) = self._on_update {
             callback();
         }
+
+        // Once a second update
+        let elapsed = self.last.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            self.last = Instant::now();
+
+            self.ram = profiler::get_ram_usage().unwrap();
+            self.vram = profiler::get_vram_usage().unwrap();
+        }
     }
 
     fn step_physics(&mut self) {
@@ -145,6 +163,14 @@ impl Engine {
 
     pub fn get_delta(&self) -> f64 {
         self.delta_time.as_secs_f64()
+    }
+
+    pub fn get_ram_usage(&self) -> u64 {
+        self.ram
+    }
+
+    pub fn get_vram_usage(&self) -> Option<u64> {
+        self.vram
     }
 
     pub fn limit_fps(&self, frame_start: Instant) {
