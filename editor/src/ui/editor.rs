@@ -277,7 +277,10 @@ impl EditorUi {
                             ui.text(format!("dt:   {:.3} ms", engine.get_delta() * 1000.0));
                             ui.separator();
                             ui.text(format!("RAM: {} MB", engine.get_ram_usage()));
-                            ui.text(format!("VRAM: {} MB", engine.get_vram_usage().unwrap_or(0)));
+                            #[cfg(not(target_os = "macos"))]
+                            {
+                                ui.text(format!("VRAM: {} MB", engine.get_vram_usage().unwrap_or(0)));
+                            }
                         }
                     }
                 });

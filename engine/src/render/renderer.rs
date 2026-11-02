@@ -189,11 +189,18 @@ impl Renderer {
             })
             .await?;
         let adapter_info = adapter.get_info();
+
+        let adapter_limits = adapter.limits();
+        let required_limits = wgpu::Limits {
+            max_texture_dimension_2d: adapter_limits.max_texture_dimension_2d,
+            ..wgpu::Limits::downlevel_defaults()
+        };
+        
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("iterum-renderer"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
                 trace: wgpu::Trace::Off,
@@ -228,6 +235,11 @@ impl Renderer {
             .ok_or_else(|| anyhow::anyhow!("the selected adapter cannot present to this window"))?;
         surface_config.format = format;
         surface_config.present_mode = present_mode;
+
+        let max_dim = device.limits().max_texture_dimension_2d;
+        surface_config.width = surface_config.width.min(max_dim);
+        surface_config.height = surface_config.height.min(max_dim);
+        
         surface.configure(&device, &surface_config);
 
         let viewport_present_layout =
@@ -552,9 +564,10 @@ impl Renderer {
         if width == 0 || height == 0 {
             return;
         }
+        let max_dim = self.device.as_ref().unwrap().limits().max_texture_dimension_2d;
         if let Some(config) = self.surface_config.as_mut() {
-            config.width = width;
-            config.height = height;
+            config.width = width.min(max_dim);
+            config.height = height.min(max_dim);
         }
         self.surface.as_ref().unwrap().configure(
             self.device.as_ref().unwrap(),

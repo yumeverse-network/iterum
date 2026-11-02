@@ -73,7 +73,13 @@ impl Engine {
             physics_world: PhysicsWorld::new(),
             physics_accumulator: 0.0,
             last: Instant::now(),
+            #[cfg(target_os = "macos")]
+            ram: profiler::get_unified_usage().unwrap_or(0),
+            #[cfg(target_os = "macos")]
+            vram: None,
+            #[cfg(not(target_os = "macos"))]
             ram: profiler::get_ram_usage().unwrap(),
+            #[cfg(not(target_os = "macos"))]
             vram: profiler::get_vram_usage().unwrap(),
         }
     }
@@ -121,8 +127,18 @@ impl Engine {
         if elapsed >= Duration::from_secs(1) {
             self.last = Instant::now();
 
-            self.ram = profiler::get_ram_usage().unwrap();
-            self.vram = profiler::get_vram_usage().unwrap();
+            #[cfg(target_os = "macos")]
+            {
+                self.ram = profiler::get_unified_usage().unwrap_or(0);
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                self.ram = profiler::get_ram_usage().unwrap();
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                self.vram = profiler::get_vram_usage().unwrap();
+            }
         }
     }
 

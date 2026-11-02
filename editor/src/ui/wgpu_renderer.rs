@@ -185,8 +185,8 @@ impl UiRenderer {
         let display_width = draw_data.display_size[0].max(1.0);
         let display_height = draw_data.display_size[1].max(1.0);
         let scale = [
-            2.0 * draw_data.framebuffer_scale[0] / display_width,
-            2.0 * draw_data.framebuffer_scale[1] / display_height,
+            draw_data.framebuffer_scale[0] / display_width,
+            draw_data.framebuffer_scale[1] / display_height,
         ];
         let params = [
             scale[0],
