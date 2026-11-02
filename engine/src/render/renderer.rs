@@ -189,17 +189,22 @@ impl Renderer {
             })
             .await?;
         let adapter_info = adapter.get_info();
-
+    
         let adapter_limits = adapter.limits();
-        let required_limits = wgpu::Limits {
+        let mut required_features = wgpu::Features::empty();
+        let mut required_limits = wgpu::Limits {
             max_texture_dimension_2d: adapter_limits.max_texture_dimension_2d,
             ..wgpu::Limits::downlevel_defaults()
         };
+        if adapter_limits.max_immediate_size > 0 {
+            required_features |= wgpu::Features::IMMEDIATES;
+            required_limits.max_immediate_size = adapter_limits.max_immediate_size;
+        }
         
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("iterum-renderer"),
-                required_features: wgpu::Features::empty(),
+                required_features,
                 required_limits,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
@@ -213,6 +218,71 @@ impl Renderer {
                     adapter_info.backend
                 )
             })?;
+    
+        let tri_vert = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("triangle.vert"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/triangle.vert").into(),
+                stage: wgpu::naga::ShaderStage::Vertex,
+                defines: &[],
+            },
+        });
+        let tri_frag = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("triangle.frag"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/triangle.frag").into(),
+                stage: wgpu::naga::ShaderStage::Fragment,
+                defines: &[],
+            },
+        });
+        let sky_vert = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sky.vert"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/sky.vert").into(),
+                stage: wgpu::naga::ShaderStage::Vertex,
+                defines: &[],
+            },
+        });
+        let sky_frag = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sky.frag"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/sky.frag").into(),
+                stage: wgpu::naga::ShaderStage::Fragment,
+                defines: &[],
+            },
+        });
+        let outline_vert = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("outline.vert"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/outline.vert").into(),
+                stage: wgpu::naga::ShaderStage::Vertex,
+                defines: &[],
+            },
+        });
+        let outline_frag = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("outline.frag"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/outline.frag").into(),
+                stage: wgpu::naga::ShaderStage::Fragment,
+                defines: &[],
+            },
+        });
+        let viewport_present_vert = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("viewport.vert"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/viewport.vert").into(),
+                stage: wgpu::naga::ShaderStage::Vertex,
+                defines: &[],
+            },
+        });
+        let viewport_present_frag = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("viewport.frag"),
+            source: wgpu::ShaderSource::Glsl {
+                shader: include_str!("../../../assets/shaders/viewport.frag").into(),
+                stage: wgpu::naga::ShaderStage::Fragment,
+                defines: &[],
+            },
+        });
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -270,10 +340,6 @@ impl Renderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let viewport_present_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("viewport-present-shader"),
-            source: wgpu::ShaderSource::Wgsl(VIEWPORT_PRESENT_SHADER.into()),
-        });
         let viewport_present_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("viewport-present-pipeline-layout"),
@@ -285,8 +351,8 @@ impl Renderer {
                 label: Some("viewport-present-pipeline"),
                 layout: Some(&viewport_present_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &viewport_present_shader,
-                    entry_point: Some("vs_main"),
+                    module: &viewport_present_vert,
+                    entry_point: Some("main"),
                     compilation_options: Default::default(),
                     buffers: &[],
                 },
@@ -294,8 +360,8 @@ impl Renderer {
                 depth_stencil: None,
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
-                    module: &viewport_present_shader,
-                    entry_point: Some("fs_main"),
+                    module: &viewport_present_frag,
+                    entry_point: Some("main"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: surface_config.format,
@@ -348,14 +414,6 @@ impl Renderer {
             }],
         });
 
-        let scene_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("scene-shader"),
-            source: wgpu::ShaderSource::Wgsl(SCENE_SHADER.into()),
-        });
-        let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("sky-shader"),
-            source: wgpu::ShaderSource::Wgsl(SKY_SHADER.into()),
-        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene-pipeline-layout"),
             bind_group_layouts: &[Some(&scene_layout), Some(&model_layout)],
@@ -370,8 +428,8 @@ impl Renderer {
             label: Some("scene-pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &scene_shader,
-                entry_point: Some("vs_main"),
+                module: &tri_vert,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertices>() as u64,
@@ -393,8 +451,8 @@ impl Renderer {
             }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &scene_shader,
-                entry_point: Some("fs_main"),
+                module: &tri_frag,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -409,8 +467,8 @@ impl Renderer {
             label: Some("sky-pipeline"),
             layout: Some(&sky_layout),
             vertex: wgpu::VertexState {
-                module: &sky_shader,
-                entry_point: Some("vs_main"),
+                module: &sky_vert,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 buffers: &[],
             },
@@ -427,8 +485,8 @@ impl Renderer {
             }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &sky_shader,
-                entry_point: Some("fs_main"),
+                module: &sky_frag,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -443,8 +501,8 @@ impl Renderer {
             label: Some("outline-pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &scene_shader,
-                entry_point: Some("vs_outline"),
+                module: &outline_vert,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertices>() as u64,
@@ -466,8 +524,8 @@ impl Renderer {
             }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &scene_shader,
-                entry_point: Some("fs_outline"),
+                module: &outline_frag,
+                entry_point: Some("main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -989,168 +1047,3 @@ impl Renderer {
 
 const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 2] =
     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
-
-const VIEWPORT_PRESENT_SHADER: &str = r#"
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-
-@group(0) @binding(0) var viewport: texture_2d<f32>;
-@group(0) @binding(1) var viewport_sampler: sampler;
-
-@vertex
-fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
-    let p = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
-    var output: VertexOutput;
-    output.position = vec4<f32>(p * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);
-    output.uv = p;
-    return output;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(viewport, viewport_sampler, input.uv);
-}
-"#;
-
-const SCENE_SHADER: &str = r#"
-struct Light {
-    position: vec4<f32>,
-    color_power: vec4<f32>,
-}
-
-struct Scene {
-    view_proj: mat4x4<f32>,
-    inv_view_proj: mat4x4<f32>,
-    viewport: vec4<f32>,
-    sky_top: vec4<f32>,
-    sky_bottom: vec4<f32>,
-    light_count: vec4<u32>,
-    lights: array<Light, 8>,
-    space: vec4<f32>,
-}
-
-struct Model {
-    model: mat4x4<f32>,
-    emissive: vec4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> scene: Scene;
-@group(1) @binding(0) var<uniform> object: Model;
-
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-}
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) normal: vec3<f32>,
-    @location(1) world_position: vec3<f32>,
-    @location(2) emissive: vec4<f32>,
-}
-
-struct FragmentOutput {
-    @location(0) color: vec4<f32>,
-    @builtin(frag_depth) depth: f32,
-}
-
-@vertex
-fn vs_main(input: VertexInput) -> VertexOutput {
-    var output: VertexOutput;
-    let world = object.model * vec4<f32>(input.position, 1.0);
-    output.position = scene.view_proj * world;
-    output.normal = normalize((object.model * vec4<f32>(input.normal, 0.0)).xyz);
-    output.world_position = world.xyz;
-    output.emissive = object.emissive;
-    return output;
-}
-
-@vertex
-fn vs_outline(input: VertexInput) -> VertexOutput {
-    var output: VertexOutput;
-    let normal = normalize((object.model * vec4<f32>(input.normal, 0.0)).xyz);
-    let world = object.model * vec4<f32>(input.position + input.normal * 0.05, 1.0);
-    output.position = scene.view_proj * world;
-    output.normal = normal;
-    output.world_position = world.xyz;
-    output.emissive = vec4<f32>(0.0);
-    return output;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> FragmentOutput {
-    var output: FragmentOutput;
-    let distance = length(input.world_position);
-    output.depth = log2(max(1e-6, 1.0 + distance)) / log2(scene.space.w + 1.0);
-    if input.emissive.a > 0.0 {
-        output.color = vec4<f32>(input.emissive.rgb / (input.emissive.rgb + vec3<f32>(1.0)), 1.0);
-        return output;
-    }
-    let n = normalize(input.normal);
-    let ambient = mix(scene.sky_bottom.rgb * 0.4, scene.sky_top.rgb * 1.6, n.y * 0.5 + 0.5);
-    let base = vec3<f32>(1.0, 0.1, 0.6);
-    var color = base * ambient;
-    for (var i = 0u; i < scene.light_count.x; i += 1u) {
-        let light = scene.lights[i];
-        let delta = light.position.xyz - input.world_position;
-        let distance = length(delta);
-        let direction = delta / max(distance, 0.0001);
-        let attenuation = light.color_power.w / max(distance * distance, 1.0);
-        color += base * max(dot(n, direction), 0.0) * light.color_power.rgb * attenuation;
-    }
-    output.color = vec4<f32>(color / (color + vec3<f32>(1.0)), 1.0);
-    return output;
-}
-
-@fragment
-fn fs_outline() -> @location(0) vec4<f32> {
-    return vec4<f32>(0.0, 0.55, 1.0, 1.0);
-}
-"#;
-
-const SKY_SHADER: &str = r#"
-struct Light {
-    position: vec4<f32>,
-    color_power: vec4<f32>,
-}
-
-struct Scene {
-    view_proj: mat4x4<f32>,
-    inv_view_proj: mat4x4<f32>,
-    viewport: vec4<f32>,
-    sky_top: vec4<f32>,
-    sky_bottom: vec4<f32>,
-    light_count: vec4<u32>,
-    lights: array<Light, 8>,
-    space: vec4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> scene: Scene;
-
-@vertex
-fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
-    let p = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
-    return vec4<f32>(p * 2.0 - vec2<f32>(1.0), 1.0, 1.0);
-}
-
-fn hash(p: vec3<f32>) -> f32 {
-    return fract(sin(dot(p, vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);
-}
-
-@fragment
-fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    let ndc = vec2<f32>(position.x / scene.viewport.x, position.y / scene.viewport.y);
-    let far = scene.inv_view_proj * vec4<f32>(ndc.x * 2.0 - 1.0, 1.0 - ndc.y * 2.0, 1.0, 1.0);
-    let direction = normalize(far.xyz / far.w);
-    let color = mix(scene.sky_bottom.rgb, scene.sky_top.rgb, direction.y * 0.5 + 0.5);
-    let cell = floor(direction * scene.space.x);
-    let star = step(0.9985, hash(cell + vec3<f32>(scene.space.z))) * scene.space.y;
-    var sun = vec3<f32>(0.0);
-    if scene.light_count.x > 0u {
-        sun = scene.lights[0].color_power.rgb;
-    }
-    return vec4<f32>(color + vec3<f32>(star) + sun * pow(max(dot(direction, normalize(vec3<f32>(0.0, 1.0, 1.0))), 0.0), 512.0), 1.0);
-}
-"#;
