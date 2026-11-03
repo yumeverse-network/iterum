@@ -79,14 +79,11 @@ void main() {
     vec4 far = inv_view_proj * vec4(v_ndc, 1.0, 1.0);
     vec3 dir = normalize(far.xyz);
 
-    vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+    vec3 sun_dir = vec3(1.25, 0.825, 3.145);
     vec3 sun_color = vec3(0.0);
     float sun_intensity = 0.0;
     if (light_count.x > 0u) {
         vec4 lp = lights[0].position;
-        if (length(lp.xyz) > 1e-6) {
-            sun_dir = normalize(lp.xyz);
-        }
         sun_color = lights[0].color_power.rgb;
         sun_intensity = lights[0].color_power.w;
     }
@@ -98,12 +95,12 @@ void main() {
     float t = dir.y * 0.5 + 0.5;
     vec3 color = mix(sky_bottom.rgb, sky_top.rgb, t);
 
-    float dist = length(dir - sun_dir);
     float sun_up = smoothstep(-0.20, 0.05, sun_dir.y);
-
-    float bloom = exp(-dist * 28.0) * 0.20
-                + exp(-dist * 10.0) * 0.04;
-    bloom *= 1.0 - smoothstep(0.15, 0.30, dist);
+    float dist = acos(clamp(dot(normalize(dir), normalize(sun_dir)), -1.0, 1.0));
+    
+    float angle = acos(clamp(dot(normalize(dir), normalize(sun_dir)), -1.0, 1.0));
+    float bloom = exp(-angle * 512.0) * 0.08
+                + exp(-angle * 256.0) * 0.015;
     bloom *= sun_up;
 
     vec3 stars = star_layer(dir, star_density,       star_brightness,       star_seed)
@@ -111,7 +108,7 @@ void main() {
     stars *= 1.0 - clamp(bloom * 6.0, 0.0, 1.0);
     color += stars;
 
-    float disk_radius = 0.03;
+    float disk_radius = 0.067;
     float aa = fwidth(dist) * 1.5;
     float disk = 1.0 - smoothstep(disk_radius - aa, disk_radius + aa, dist);
 
